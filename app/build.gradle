@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'ir.aspar.mapper'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'ir.aspar.mapper'
+        minSdk 30
+        targetSdk 34
+        versionCode 1
+        versionName '0.1.0'
+    }
+
+    signingConfigs {
+        // A fixed key committed with the project, so every new build can be installed
+        // over the previous one without uninstalling. Fine for a personal app.
+        aspar {
+            storeFile file('aspar-debug.keystore')
+            storePassword 'asparmapper'
+            keyAlias 'aspar'
+            keyPassword 'asparmapper'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.aspar
+        }
+        release {
+            signingConfig signingConfigs.aspar
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources {
+            excludes += ['META-INF/versions/9/OSGI-INF/MANIFEST.MF', 'META-INF/DEPENDENCIES']
+        }
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation 'com.github.MuntashirAkon:libadb-android:3.1.1'
+    implementation 'com.github.MuntashirAkon:sun-security-android:1.1'
+    implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:6.1'
+    implementation 'androidx.annotation:annotation:1.9.1'
+}
