@@ -541,6 +541,20 @@ final class EditorOverlay {
             hs.setHorizontalScrollBarEnabled(false);
             hs.addView(chips);
             popup.addView(hs);
+            LinearLayout sz = new LinearLayout(ctx);
+            sz.addView(chip("اندازه −", v -> scale(e, -0.15f)));
+            sz.addView(chip("اندازه +", v -> scale(e, 0.15f)));
+            popup.addView(sz);
+            TextView cur = chip(e.cursor ? "🖱 آزاد کردن موس با این کلید: روشن" : "🖱 آزاد کردن موس با این کلید: خاموش", v -> {
+                e.cursor = !e.cursor;
+                canvas.invalidate();
+                buildPopup();
+            });
+            cur.setBackground(round(e.cursor ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
+            popup.addView(cur);
+            if (e.cursor) {
+                popup.addView(small("با زدن این کلید، دکمه بازی لمس می‌شود و موس آزاد می‌شود؛ دوباره بزنی موس قفل می‌شود (مثلاً برای لوت‌باکس)", 0xFFAAAAAA));
+            }
         } else if (KeyMap.JOYSTICK.equals(e.type)) {
             popup.addView(small("کلیدها: " + KeyNames.name(e.up) + " " + KeyNames.name(e.left) + " "
                     + KeyNames.name(e.down) + " " + KeyNames.name(e.right), 0xFFFFFFFF));
@@ -549,6 +563,22 @@ final class EditorOverlay {
             r.addView(chip("اندازه −", v -> resize(e, -0.01f)));
             r.addView(chip("اندازه +", v -> resize(e, 0.01f)));
             popup.addView(r);
+            TextView sp = chip(e.autoSprint ? "🏃 " + KeyNames.name(e.up) + " = دویدن سریع: روشن" : "🏃 " + KeyNames.name(e.up) + " = دویدن سریع: خاموش", v -> {
+                e.autoSprint = !e.autoSprint;
+                canvas.invalidate();
+                buildPopup();
+            });
+            sp.setBackground(round(e.autoSprint ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
+            popup.addView(sp);
+            if (e.autoSprint) {
+                popup.addView(small("دایره نارنجی 🏃 را روی آیکون دویدن بازی بکش (یا با دکمه‌های زیر تنظیم کن)", 0xFFAAAAAA));
+                LinearLayout r3 = new LinearLayout(ctx);
+                r3.addView(chip("فاصله دویدن −", v -> sprintDist(e, -0.2f)));
+                r3.addView(chip("فاصله دویدن +", v -> sprintDist(e, 0.2f)));
+                popup.addView(r3);
+            } else {
+                popup.addView(small("وقتی خاموش است: Shift + " + KeyNames.name(e.up) + " = دویدن سریع", 0xFFAAAAAA));
+            }
         } else if (KeyMap.LOOK.equals(e.type)) {
             popup.addView(small(String.format(Locale.US, "حساسیت: %.1f", e.sens), 0xFFFFFFFF));
             LinearLayout r1 = new LinearLayout(ctx);
@@ -590,6 +620,16 @@ final class EditorOverlay {
         e.size = Math.max(0.04f, Math.min(0.45f, e.size + d));
         canvas.invalidate();
         relayout();
+    }
+
+    private void scale(KeyMap.Element e, float d) {
+        e.scale = Math.max(0.5f, Math.min(3f, Math.round((e.scale + d) * 100f) / 100f));
+        canvas.invalidate();
+    }
+
+    private void sprintDist(KeyMap.Element e, float d) {
+        e.sprintDist = Math.max(1.2f, Math.min(6f, e.sprintDist + d));
+        canvas.invalidate();
     }
 
     private void sens(KeyMap.Element e, float d) {
@@ -810,6 +850,7 @@ final class EditorOverlay {
 
     private final class EditCanvas extends KeymapView {
         private KeyMap.Element dragging;
+        private KeyMap.Element draggingSprint;
         private float downX, downY, grabDx, grabDy;
         private boolean moved;
 
@@ -822,6 +863,11 @@ final class EditorOverlay {
         public boolean onTouchEvent(MotionEvent ev) {
             switch (ev.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
+                    draggingSprint = hitSprint(ev.getX(), ev.getY());
+                    if (draggingSprint != null) {
+                        popup.setVisibility(View.GONE);
+                        return true;
+                    }
                     dragging = hit(ev.getX(), ev.getY());
                     downX = ev.getX();
                     downY = ev.getY();
@@ -832,6 +878,13 @@ final class EditorOverlay {
                     }
                     return true;
                 case MotionEvent.ACTION_MOVE:
+                    if (draggingSprint != null) {
+                        KeyMap.Element j = draggingSprint;
+                        float r = j.size * screen().y;
+                        j.sprintDist = Math.max(1.2f, Math.min(6f, (toViewY(j.fy) - ev.getY()) / r));
+                        invalidate();
+                        return true;
+                    }
                     if (dragging == null) return true;
                     if (Math.hypot(ev.getX() - downX, ev.getY() - downY) > dp(6)) {
                         if (!moved) popup.setVisibility(View.GONE);
@@ -844,6 +897,11 @@ final class EditorOverlay {
                     }
                     return true;
                 case MotionEvent.ACTION_UP:
+                    if (draggingSprint != null) {
+                        select(draggingSprint);
+                        draggingSprint = null;
+                        return true;
+                    }
                     if (dragging != null) {
                         select(dragging); // after a drag or a tap: show its settings next to it
                     } else if (!moved) {
@@ -857,13 +915,24 @@ final class EditorOverlay {
             }
         }
 
+        private KeyMap.Element hitSprint(float x, float y) {
+            for (KeyMap.Element e : keyMap.elements) {
+                if (!KeyMap.JOYSTICK.equals(e.type) || !e.autoSprint) continue;
+                float sx = toViewX(e.fx);
+                float sy = toViewY(e.fy) - e.sprintDist * e.size * screen().y;
+                if (Math.hypot(sx - x, sy - y) < dp(26)) return e;
+            }
+            return null;
+        }
+
         private KeyMap.Element hit(float x, float y) {
             Point s = screen();
             KeyMap.Element best = null;
-            double bestD = dp(34);
+            double bestD = Double.MAX_VALUE;
             for (KeyMap.Element e : keyMap.elements) {
                 double d = Math.hypot(toViewX(e.fx) - x, toViewY(e.fy) - y);
-                if (d < bestD) {
+                double reach = Math.max(dp(34), radiusOf(e) + dp(6));
+                if (d < reach && d < bestD) {
                     bestD = d;
                     best = e;
                 }

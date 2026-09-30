@@ -43,6 +43,11 @@ final class Mapper {
         float sens;
         float lim;
         int finger;
+        boolean cursor;       // key also switches game mode <-> free mouse
+        boolean autoSprint;   // joystick: forward alone goes to the sprint point
+        int sprintKey;        // joystick: key that sprints while held
+        float sprintR;        // joystick: distance of the sprint point (straight up)
+        boolean sprinting;
     }
 
     private final TouchInjector touch;
@@ -109,6 +114,10 @@ final class Mapper {
                 e.right = o.optInt("right", 32);
                 e.sens = (float) o.optDouble("sens", 1.0);
                 e.lim = (float) o.optDouble("lim", 300);
+                e.cursor = o.optBoolean("cursor", false);
+                e.autoSprint = o.optBoolean("autoSprint", false);
+                e.sprintKey = o.optInt("sprintKey", -1);
+                e.sprintR = (float) o.optDouble("sprintR", e.r * 2.5);
                 if ("look".equals(e.type)) e.finger = FINGER_LOOK;
                 else e.finger = 100 + i; // taps, toggles and every joystick get their own finger
                 elements.add(e);
@@ -161,6 +170,27 @@ final class Mapper {
             if (!down) setGameMode(!gameMode);
             return;
         }
+        // keys marked "cursor": tap the button, then switch game mode <-> free mouse (e.g. loot/inventory)
+        Element cursorKey = null;
+        synchronized (this) {
+            for (Element e : elements) {
+                if (e.cursor && e.key == code && ("tap".equals(e.type) || "toggle".equals(e.type))) cursorKey = e;
+            }
+        }
+        if (cursorKey != null) {
+            if (down) {
+                synchronized (this) {
+                    touch.down(cursorKey.finger, cursorKey.x, cursorKey.y);
+                }
+            } else {
+                synchronized (this) {
+                    touch.up(cursorKey.finger);
+                }
+                setGameMode(!gameMode);
+            }
+            return;
+        }
+
         if (!gameMode) return;
 
         synchronized (this) {
@@ -180,7 +210,7 @@ final class Mapper {
                         else touch.down(e.finger, e.x, e.y);
                     }
                 } else if ("joystick".equals(e.type)
-                        && (code == e.up || code == e.down || code == e.left || code == e.right)) {
+                        && (code == e.up || code == e.down || code == e.left || code == e.right || code == e.sprintKey)) {
                     updateJoystick(e);
                 }
             }
@@ -195,17 +225,37 @@ final class Mapper {
         if (pressed.contains(e.left)) dx -= 1;
         if (pressed.contains(e.right)) dx += 1;
         if (dx == 0 && dy == 0) {
-            touch.up(e.finger);
+            if (touch.isDown(e.finger)) {
+                // slide back to the centre before lifting, so the game does not lock sprint by itself
+                touch.move(e.finger, e.x, e.y);
+                touch.up(e.finger);
+            }
+            e.sprinting = false;
             return;
         }
-        float len = (float) Math.sqrt(dx * dx + dy * dy);
-        float tx = e.x + dx / len * e.r;
-        float ty = e.y + dy / len * e.r;
+        boolean wantSprint = dx == 0 && dy < 0
+                && (e.autoSprint || (e.sprintKey > 0 && pressed.contains(e.sprintKey)));
+        float tx;
+        float ty;
+        if (wantSprint) {
+            tx = e.x;
+            ty = e.y - e.sprintR;
+        } else {
+            float len = (float) Math.sqrt(dx * dx + dy * dy);
+            tx = e.x + dx / len * e.r;
+            ty = e.y + dy / len * e.r;
+        }
         if (!touch.isDown(e.finger)) {
             touch.down(e.finger, e.x, e.y);
-            // move in two steps so on-screen joysticks register the drag reliably
-            touch.move(e.finger, e.x + (tx - e.x) * 0.5f, e.y + (ty - e.y) * 0.5f);
+            // move in steps so on-screen joysticks register the drag reliably
+            touch.move(e.finger, e.x + (tx - e.x) * 0.3f, e.y + (ty - e.y) * 0.3f);
         }
+        if (wantSprint && !e.sprinting) {
+            // drag through the joystick edge up to the sprint point, like a finger would
+            touch.move(e.finger, e.x, e.y - e.r);
+            touch.move(e.finger, e.x, e.y - (e.r + e.sprintR) / 2f);
+        }
+        e.sprinting = wantSprint;
         touch.move(e.finger, tx, ty);
     }
 

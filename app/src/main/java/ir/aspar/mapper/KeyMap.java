@@ -27,6 +27,11 @@ public final class KeyMap {
         public float sens = 1.0f;   // camera sensitivity
         public int up = 17, down = 31, left = 30, right = 32; // W S A D
         public String note = "";
+        public float scale = 1.0f;       // on-screen size of a key circle (1 = normal)
+        public boolean autoSprint = true; // joystick: forward alone pushes the finger up to the sprint-lock point
+        public int sprintKey = 42;       // joystick: holding this key (Shift) also sprints
+        public float sprintDist = 2.5f;  // joystick: sprint point distance, in joystick radiuses, straight up
+        public boolean cursor = false;   // key: after pressing it, switch between game mode and free mouse
 
         public String label() {
             switch (type) {
@@ -36,9 +41,9 @@ public final class KeyMap {
                 case LOOK:
                     return "🖱";
                 case TOGGLE:
-                    return KeyNames.shortName(key) + "⏺";
+                    return KeyNames.shortName(key) + "⏺" + (cursor ? "🖱" : "");
                 default:
-                    return KeyNames.shortName(key);
+                    return KeyNames.shortName(key) + (cursor ? "🖱" : "");
             }
         }
 
@@ -55,6 +60,11 @@ public final class KeyMap {
             o.put("left", left);
             o.put("right", right);
             o.put("note", note);
+            o.put("scale", scale);
+            o.put("autoSprint", autoSprint);
+            o.put("sprintKey", sprintKey);
+            o.put("sprintDist", sprintDist);
+            o.put("cursor", cursor);
             return o;
         }
 
@@ -71,6 +81,11 @@ public final class KeyMap {
             e.left = o.optInt("left", 30);
             e.right = o.optInt("right", 32);
             e.note = o.optString("note", "");
+            e.scale = (float) o.optDouble("scale", 1.0);
+            e.autoSprint = o.optBoolean("autoSprint", true);
+            e.sprintKey = o.optInt("sprintKey", 42);
+            e.sprintDist = (float) o.optDouble("sprintDist", 2.5);
+            e.cursor = o.optBoolean("cursor", false);
             return e;
         }
     }
@@ -121,12 +136,16 @@ public final class KeyMap {
             o.put("y", e.fy * height);
             if (TAP.equals(e.type) || TOGGLE.equals(e.type)) {
                 o.put("key", e.key);
+                o.put("cursor", e.cursor);
             } else if (JOYSTICK.equals(e.type)) {
                 o.put("r", e.size * height);
                 o.put("up", e.up);
                 o.put("down", e.down);
                 o.put("left", e.left);
                 o.put("right", e.right);
+                o.put("autoSprint", e.autoSprint);
+                o.put("sprintKey", e.sprintKey);
+                o.put("sprintR", e.sprintDist * e.size * height);
             } else if (LOOK.equals(e.type)) {
                 o.put("sens", e.sens);
                 o.put("lim", e.size * height);

@@ -63,6 +63,12 @@ class KeymapView extends View {
         return (vy + loc[1]) / screen().y;
     }
 
+    /** Radius of the round key marker, scaled per element. */
+    float radiusOf(KeyMap.Element e) {
+        if (KeyMap.TAP.equals(e.type) || KeyMap.TOGGLE.equals(e.type)) return keyRadius * e.scale;
+        return keyRadius;
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         if (keyMap == null) return;
@@ -80,12 +86,24 @@ class KeymapView extends View {
                 stroke.setColor(sel ? accent : (KeyMap.LOOK.equals(e.type) ? 0xFF66BB6A : accent));
                 canvas.drawCircle(x, y, r, stroke);
             }
+            if (KeyMap.JOYSTICK.equals(e.type) && e.autoSprint) {
+                // where the finger goes to lock sprint (should sit on the game's running icon)
+                float sy = y - e.sprintDist * e.size * s.y;
+                fill.setColor(0x55FF9800);
+                canvas.drawCircle(x, sy, keyRadius * 0.8f, fill);
+                stroke.setColor(0xFFFF9800);
+                canvas.drawCircle(x, sy, keyRadius * 0.8f, stroke);
+                text.setTextSize(Ui.dp(getContext(), 13));
+                text.setColor(0xFFFFFFFF);
+                canvas.drawText("🏃", x, sy + Ui.dp(getContext(), 5), text);
+            }
+            float kr = radiusOf(e);
             fill.setColor(sel ? 0xDDFFC107 : 0xAA000000);
-            canvas.drawCircle(x, y, keyRadius, fill);
+            canvas.drawCircle(x, y, kr, fill);
             stroke.setColor(accent);
-            canvas.drawCircle(x, y, keyRadius, stroke);
+            canvas.drawCircle(x, y, kr, stroke);
             String label = e.label();
-            float size = label.length() > 4 ? Ui.dp(getContext(), 9) : Ui.dp(getContext(), 12);
+            float size = (label.length() > 4 ? Ui.dp(getContext(), 9) : Ui.dp(getContext(), 12)) * Math.max(0.7f, Math.min(1.8f, e.scale));
             text.setTextSize(size);
             text.setColor(sel ? 0xFF000000 : 0xFFFFFFFF);
             canvas.drawText(label, x, y + size / 3, text);
