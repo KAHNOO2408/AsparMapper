@@ -63,17 +63,65 @@ class KeymapView extends View {
         return (vy + loc[1]) / screen().y;
     }
 
-    /** Editor only: draw a small gear on each button that opens its settings. */
+    /** Editor only: the selected button gets a ring with settings / resize / delete badges. */
     boolean gears;
 
-    /** Centre of the gear badge of an element, in view coordinates. */
-    float[] gearPos(KeyMap.Element e) {
+    static final int BADGE_SETTINGS = 0;
+    static final int BADGE_RESIZE = 1;
+    static final int BADGE_DELETE = 2;
+
+    float badgeRadius() {
+        return Ui.dp(getContext(), 17);
+    }
+
+    /** Radius of the selection ring around an element (view pixels). */
+    float ringRadius(KeyMap.Element e) {
+        if (KeyMap.JOYSTICK.equals(e.type) || KeyMap.LOOK.equals(e.type)) {
+            return e.size * screen().y + Ui.dp(getContext(), 8);
+        }
+        return Math.max(radiusOf(e) * 1.6f, Ui.dp(getContext(), 44));
+    }
+
+    /** Centre of a badge on the ring: settings top-left, resize top-right, delete bottom-right. */
+    float[] badgePos(KeyMap.Element e, int which) {
         Point s = screen();
         getLocationOnScreen(loc);
         float x = e.fx * s.x - loc[0];
         float y = e.fy * s.y - loc[1];
-        float r = radiusOf(e);
-        return new float[]{x + r * 0.72f, y - r * 0.72f};
+        float d = ringRadius(e) * 0.7071f;
+        switch (which) {
+            case BADGE_SETTINGS:
+                return new float[]{x - d, y - d};
+            case BADGE_RESIZE:
+                return new float[]{x + d, y - d};
+            default:
+                return new float[]{x + d, y + d};
+        }
+    }
+
+    private void drawBadge(Canvas c, float bx, float by, int which) {
+        float br = badgeRadius();
+        fill.setColor(0xF0000000);
+        c.drawCircle(bx, by, br, fill);
+        float u = br / 10f;
+        stroke.setColor(0xFFFFFFFF);
+        float old = stroke.getStrokeWidth();
+        stroke.setStrokeWidth(u * 1.6f);
+        if (which == BADGE_SETTINGS) {
+            text.setTextSize(br * 1.3f);
+            text.setColor(0xFFFFFFFF);
+            c.drawText("⚙", bx, by + br * 0.45f, text);
+        } else if (which == BADGE_RESIZE) {
+            // two corner brackets, like "expand"
+            c.drawLine(bx + u, by - 5 * u, bx + 5 * u, by - 5 * u, stroke);
+            c.drawLine(bx + 5 * u, by - 5 * u, bx + 5 * u, by - u, stroke);
+            c.drawLine(bx - 5 * u, by + u, bx - 5 * u, by + 5 * u, stroke);
+            c.drawLine(bx - 5 * u, by + 5 * u, bx - u, by + 5 * u, stroke);
+        } else {
+            c.drawLine(bx - 4.5f * u, by - 4.5f * u, bx + 4.5f * u, by + 4.5f * u, stroke);
+            c.drawLine(bx + 4.5f * u, by - 4.5f * u, bx - 4.5f * u, by + 4.5f * u, stroke);
+        }
+        stroke.setStrokeWidth(old);
     }
 
     /** Radius of the round key marker, scaled per element. */
@@ -123,6 +171,29 @@ class KeymapView extends View {
                 fill.setColor(0x88AB47BC);
                 canvas.drawCircle(exv, eyv, keyRadius * 0.55f, fill);
             }
+            if (KeyMap.JOYSTICK.equals(e.type)) {
+                // W / A / S / D (or arrows) around the centre, like the real stick
+                float r = e.size * s.y;
+                float d = r * 0.55f;
+                float kr2 = Math.max(Ui.dp(getContext(), 13), Math.min(r * 0.24f, Ui.dp(getContext(), 22)));
+                int[] codes = {e.up, e.left, e.down, e.right};
+                float[][] pos = {{0, -d}, {-d, 0}, {0, d}, {d, 0}};
+                for (int k = 0; k < 4; k++) {
+                    float px = x + pos[k][0];
+                    float py = y + pos[k][1];
+                    fill.setColor(0x99000000);
+                    canvas.drawCircle(px, py, kr2, fill);
+                    stroke.setColor(sel ? accent : 0xCCFFFFFF);
+                    canvas.drawCircle(px, py, kr2, stroke);
+                    String l = KeyNames.shortName(codes[k]);
+                    text.setTextSize(l.length() > 2 ? kr2 * 0.6f : kr2 * 0.9f);
+                    text.setColor(0xFFFFFFFF);
+                    canvas.drawText(l, px, py + kr2 * 0.32f, text);
+                }
+                fill.setColor(sel ? 0xDDFFC107 : 0x99FFFFFF);
+                canvas.drawCircle(x, y, Ui.dp(getContext(), 6), fill);
+                continue;
+            }
             float kr = radiusOf(e);
             fill.setColor(sel ? 0xDDFFC107 : 0xAA000000);
             canvas.drawCircle(x, y, kr, fill);
@@ -139,23 +210,23 @@ class KeymapView extends View {
                     canvas.drawText(String.valueOf(k + 1), px, py + Ui.dp(getContext(), 4), text);
                 }
             }
-            if (gears) {
-                float gx = x + kr * 0.72f;
-                float gy = y - kr * 0.72f;
-                float gr = Ui.dp(getContext(), 10);
-                fill.setColor(sel ? 0xFFFFC107 : 0xFF2A2A30);
-                canvas.drawCircle(gx, gy, gr, fill);
-                stroke.setColor(0xFFFFFFFF);
-                canvas.drawCircle(gx, gy, gr, stroke);
-                text.setTextSize(Ui.dp(getContext(), 12));
-                text.setColor(sel ? 0xFF000000 : 0xFFFFFFFF);
-                canvas.drawText("⚙", gx, gy + Ui.dp(getContext(), 4.5f), text);
-            }
             String label = e.label();
             float size = (label.length() > 4 ? Ui.dp(getContext(), 9) : Ui.dp(getContext(), 12)) * Math.max(0.7f, Math.min(1.8f, e.scale));
             text.setTextSize(size);
             text.setColor(sel ? 0xFF000000 : 0xFFFFFFFF);
             canvas.drawText(label, x, y + size / 3, text);
+        }
+        // selection ring + badges on top of everything (editor only)
+        KeyMap.Element e = selected;
+        if (gears && e != null && keyMap.elements.contains(e)) {
+            float x = e.fx * s.x - loc[0];
+            float y = e.fy * s.y - loc[1];
+            stroke.setColor(0xDDFFFFFF);
+            canvas.drawCircle(x, y, ringRadius(e), stroke);
+            for (int b = 0; b < 3; b++) {
+                float[] p = badgePos(e, b);
+                drawBadge(canvas, p[0], p[1], b);
+            }
         }
     }
 }

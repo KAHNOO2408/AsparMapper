@@ -627,8 +627,8 @@ final class EditorOverlay {
             buildPopup();
         } else {
             popup.setVisibility(View.GONE);
-            showHint(keyed ? "کلید فعلی: " + KeyNames.name(e.key) + " • برای تغییر یک کلید بزن • تنظیمات: ⚙"
-                    : typeName(e) + " • تنظیمات: ⚙", 2500);
+            showHint(keyed ? "کلید فعلی: " + KeyNames.name(e.key) + " • برای تغییر یک کلید بزن • ⚙ تنظیمات • ⤢ اندازه • ✕ حذف"
+                    : typeName(e) + " • ⚙ تنظیمات • ⤢ اندازه • ✕ حذف", 2500);
         }
     }
 
@@ -1147,7 +1147,7 @@ final class EditorOverlay {
         private KeyMap.Element dragging;
         private KeyMap.Element draggingSprint;
         private KeyMap.Element draggingEnd;
-        private KeyMap.Element gearTapped;
+        private int badge = -1;
         private float downX, downY, grabDx, grabDy;
         private boolean moved;
 
@@ -1168,9 +1168,9 @@ final class EditorOverlay {
             }
             switch (ev.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
-                    KeyMap.Element g = hitGear(ev.getX(), ev.getY());
-                    if (g != null) {
-                        gearTapped = g;
+                    badge = hitBadge(ev.getX(), ev.getY());
+                    if (badge >= 0) {
+                        if (badge == BADGE_RESIZE) popup.setVisibility(View.GONE);
                         return true;
                     }
                     draggingEnd = hitEnd(ev.getX(), ev.getY());
@@ -1193,6 +1193,18 @@ final class EditorOverlay {
                     }
                     return true;
                 case MotionEvent.ACTION_MOVE:
+                    if (badge == BADGE_RESIZE && selected != null) {
+                        KeyMap.Element t = selected;
+                        float d = (float) Math.hypot(ev.getX() - toViewX(t.fx), ev.getY() - toViewY(t.fy));
+                        if (KeyMap.JOYSTICK.equals(t.type) || KeyMap.LOOK.equals(t.type)) {
+                            t.size = clamp((d - dp(8)) / screen().y, 0.04f, 0.45f);
+                        } else {
+                            t.scale = clamp((d / 1.6f) / keyRadius, 0.5f, 3f);
+                        }
+                        invalidate();
+                        return true;
+                    }
+                    if (badge >= 0) return true;
                     if (draggingEnd != null) {
                         draggingEnd.ex = clamp(toFractionX(ev.getX()), 0f, 1f);
                         draggingEnd.ey = clamp(toFractionY(ev.getY()), 0f, 1f);
@@ -1218,11 +1230,20 @@ final class EditorOverlay {
                     }
                     return true;
                 case MotionEvent.ACTION_UP:
-                    if (gearTapped != null) {
-                        KeyMap.Element t = gearTapped;
-                        gearTapped = null;
-                        if (canvas.selected == t && popup.getVisibility() == View.VISIBLE) select(t, false);
-                        else select(t, true);
+                    if (badge >= 0) {
+                        int b = badge;
+                        badge = -1;
+                        KeyMap.Element t = selected;
+                        if (t == null) return true;
+                        if (b == BADGE_SETTINGS) {
+                            if (popup.getVisibility() == View.VISIBLE) popup.setVisibility(View.GONE);
+                            else select(t, true);
+                        } else if (b == BADGE_DELETE) {
+                            keyMap.elements.remove(t);
+                            select(null);
+                        } else {
+                            relayout();
+                        }
                         return true;
                     }
                     if (draggingEnd != null) {
@@ -1248,13 +1269,14 @@ final class EditorOverlay {
             }
         }
 
-        private KeyMap.Element hitGear(float x, float y) {
-            for (int i = keyMap.elements.size() - 1; i >= 0; i--) {
-                KeyMap.Element e = keyMap.elements.get(i);
-                float[] p = gearPos(e);
-                if (Math.hypot(p[0] - x, p[1] - y) < dp(16)) return e;
+        /** Which badge of the selected element is under (x, y), or -1. */
+        private int hitBadge(float x, float y) {
+            if (selected == null || !keyMap.elements.contains(selected)) return -1;
+            for (int b = 0; b < 3; b++) {
+                float[] p = badgePos(selected, b);
+                if (Math.hypot(p[0] - x, p[1] - y) < badgeRadius() + dp(4)) return b;
             }
-            return null;
+            return -1;
         }
 
         private KeyMap.Element hitEnd(float x, float y) {
