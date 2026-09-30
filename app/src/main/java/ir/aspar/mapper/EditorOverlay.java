@@ -563,7 +563,7 @@ final class EditorOverlay {
             r.addView(chip("اندازه −", v -> resize(e, -0.01f)));
             r.addView(chip("اندازه +", v -> resize(e, 0.01f)));
             popup.addView(r);
-            TextView sp = chip(e.autoSprint ? "🏃 " + KeyNames.name(e.up) + " = دویدن سریع: روشن" : "🏃 " + KeyNames.name(e.up) + " = دویدن سریع: خاموش", v -> {
+            TextView sp = chip(e.autoSprint ? "🏃 دوبار " + KeyNames.name(e.up) + " = دویدن سریع قفل: روشن" : "🏃 دوبار " + KeyNames.name(e.up) + " = دویدن سریع قفل: خاموش", v -> {
                 e.autoSprint = !e.autoSprint;
                 canvas.invalidate();
                 buildPopup();
@@ -571,14 +571,15 @@ final class EditorOverlay {
             sp.setBackground(round(e.autoSprint ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
             popup.addView(sp);
             if (e.autoSprint) {
-                popup.addView(small("دایره نارنجی 🏃 را روی آیکون دویدن بازی بکش (یا با دکمه‌های زیر تنظیم کن)", 0xFFAAAAAA));
+                popup.addView(small("نگه‌داشتن " + KeyNames.name(e.up) + " = راه رفتن • دوبار زدن = دویدن سریع و قفل • یک بار دیگر = ایست. "
+                        + "دایره نارنجی 🏃 را روی آیکون دویدن بازی بکش", 0xFFAAAAAA));
                 LinearLayout r3 = new LinearLayout(ctx);
                 r3.addView(chip("فاصله دویدن −", v -> sprintDist(e, -0.2f)));
                 r3.addView(chip("فاصله دویدن +", v -> sprintDist(e, 0.2f)));
                 popup.addView(r3);
             } else {
-                popup.addView(small("وقتی خاموش است: Shift + " + KeyNames.name(e.up) + " = دویدن سریع", 0xFFAAAAAA));
             }
+            popup.addView(small("Shift + " + KeyNames.name(e.up) + " (نگه‌داشتن) = دویدن سریع بدون قفل", 0xFFAAAAAA));
         } else if (KeyMap.LOOK.equals(e.type)) {
             popup.addView(small(String.format(Locale.US, "حساسیت: %.1f", e.sens), 0xFFFFFFFF));
             LinearLayout r1 = new LinearLayout(ctx);

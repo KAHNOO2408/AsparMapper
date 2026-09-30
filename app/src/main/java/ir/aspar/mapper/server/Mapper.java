@@ -48,6 +48,9 @@ final class Mapper {
         int sprintKey;        // joystick: key that sprints while held
         float sprintR;        // joystick: distance of the sprint point (straight up)
         boolean sprinting;
+        boolean sprintLocked;   // double-tapped forward: finger stays on the sprint point
+        boolean swallowUp;      // forward key pressed only to stop sprinting: ignore until released
+        long lastUpRelease;
     }
 
     private final TouchInjector touch;
@@ -133,6 +136,11 @@ final class Mapper {
             touch.releaseAll();
             pressed.clear();
             pendingDx = pendingDy = 0;
+            for (Element e : elements) {
+                e.sprintLocked = false;
+                e.sprinting = false;
+                e.swallowUp = false;
+            }
         }
         Log.i("game mode = " + on);
         if (devices != null) devices.applyGrabState();
@@ -211,16 +219,51 @@ final class Mapper {
                     }
                 } else if ("joystick".equals(e.type)
                         && (code == e.up || code == e.down || code == e.left || code == e.right || code == e.sprintKey)) {
+                    joystickKey(e, code, down);
                     updateJoystick(e);
                 }
             }
         }
     }
 
+    private static final long DOUBLE_TAP_MS = 350;
+
+    /** Double-tap forward = locked fast run; forward again = stop. Other directions also stop the lock. */
+    private void joystickKey(Element e, int code, boolean down) {
+        long now = SystemClock.uptimeMillis();
+        if (code == e.up) {
+            if (down) {
+                if (e.sprintLocked) {
+                    e.sprintLocked = false;
+                    e.swallowUp = true; // this press only stops running
+                } else if (e.autoSprint && now - e.lastUpRelease < DOUBLE_TAP_MS) {
+                    e.sprintLocked = true;
+                }
+            } else {
+                if (e.swallowUp) e.swallowUp = false;
+                else e.lastUpRelease = now;
+            }
+        } else if (down && e.sprintLocked && (code == e.down || code == e.left || code == e.right)) {
+            e.sprintLocked = false;
+        }
+    }
+
     private void updateJoystick(Element e) {
+        if (e.sprintLocked) {
+            float sx = e.x;
+            float sy = e.y - e.sprintR;
+            if (!touch.isDown(e.finger)) touch.down(e.finger, e.x, e.y);
+            if (!e.sprinting) {
+                touch.move(e.finger, e.x, e.y - e.r);
+                touch.move(e.finger, e.x, e.y - (e.r + e.sprintR) / 2f);
+            }
+            e.sprinting = true;
+            touch.move(e.finger, sx, sy);
+            return;
+        }
         float dx = 0;
         float dy = 0;
-        if (pressed.contains(e.up)) dy -= 1;
+        if (pressed.contains(e.up) && !e.swallowUp) dy -= 1;
         if (pressed.contains(e.down)) dy += 1;
         if (pressed.contains(e.left)) dx -= 1;
         if (pressed.contains(e.right)) dx += 1;
@@ -233,8 +276,7 @@ final class Mapper {
             e.sprinting = false;
             return;
         }
-        boolean wantSprint = dx == 0 && dy < 0
-                && (e.autoSprint || (e.sprintKey > 0 && pressed.contains(e.sprintKey)));
+        boolean wantSprint = dx == 0 && dy < 0 && e.sprintKey > 0 && pressed.contains(e.sprintKey);
         float tx;
         float ty;
         if (wantSprint) {
