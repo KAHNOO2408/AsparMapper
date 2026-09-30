@@ -138,8 +138,13 @@ public final class KeyMap {
     }
 
     public static KeyMap load(android.content.Context ctx) {
+        android.content.SharedPreferences p = Prefs.get(ctx);
+        // one-time cleanup: older versions pre-filled the Oxide guess layout; start empty instead
+        if (!p.getBoolean("empty_layout_migrated", false)) {
+            p.edit().remove("keymap").putBoolean("empty_layout_migrated", true).commit();
+        }
         String s = Prefs.keymapJson(ctx);
-        return s == null ? oxideDefault() : fromJsonString(s);
+        return s == null ? new KeyMap() : fromJsonString(s);
     }
 
     public void save(android.content.Context ctx) {
