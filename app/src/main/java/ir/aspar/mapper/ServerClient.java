@@ -23,6 +23,8 @@ public final class ServerClient {
         void onConnectionChanged(boolean connected, String info);
 
         void onGameModeChanged(boolean gameMode);
+
+        void onDevices(java.util.List<String> devices);
     }
 
     public static final int EXPECTED_VERSION = 1;
@@ -80,6 +82,15 @@ public final class ServerClient {
             JSONObject o = new JSONObject();
             o.put("cmd", "mode");
             o.put("game", on);
+            send(o);
+        } catch (Exception ignored) {
+        }
+    }
+
+    public void requestDevices() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("cmd", "devices");
             send(o);
         } catch (Exception ignored) {
         }
@@ -148,6 +159,12 @@ public final class ServerClient {
                 String line;
                 while (running && (line = in.readLine()) != null) {
                     JSONObject msg = new JSONObject(line);
+                    org.json.JSONArray devs = msg.optJSONArray("devices");
+                    if (devs != null) {
+                        java.util.List<String> list = new java.util.ArrayList<>();
+                        for (int i = 0; i < devs.length(); i++) list.add(devs.optString(i));
+                        main.post(() -> listener.onDevices(list));
+                    }
                     if ("mode".equals(msg.optString("event"))) {
                         gameMode = msg.optBoolean("value");
                         boolean gm = gameMode;

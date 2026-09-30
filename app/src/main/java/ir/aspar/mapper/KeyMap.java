@@ -137,18 +137,23 @@ public final class KeyMap {
         return cfg;
     }
 
-    public static KeyMap load(android.content.Context ctx) {
+    private static String prefKey(String pkg) {
+        return pkg == null ? "keymap" : "keymap_" + pkg;
+    }
+
+    /** Each game has its own layout. A new game starts with an empty screen. */
+    public static KeyMap load(android.content.Context ctx, String pkg) {
         android.content.SharedPreferences p = Prefs.get(ctx);
         // one-time cleanup: older versions pre-filled the Oxide guess layout; start empty instead
         if (!p.getBoolean("empty_layout_migrated", false)) {
             p.edit().remove("keymap").putBoolean("empty_layout_migrated", true).commit();
         }
-        String s = Prefs.keymapJson(ctx);
+        String s = p.getString(prefKey(pkg), null);
         return s == null ? new KeyMap() : fromJsonString(s);
     }
 
-    public void save(android.content.Context ctx) {
-        Prefs.saveKeymap(ctx, toJsonString());
+    public void save(android.content.Context ctx, String pkg) {
+        Prefs.get(ctx).edit().putString(prefKey(pkg), toJsonString()).apply();
     }
 
     private static Element tap(int key, float fx, float fy, String note) {

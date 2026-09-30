@@ -26,6 +26,34 @@ public class MainActivity extends Activity implements MapperService.StatusListen
     private TextView overlayState;
     private EditText pairPort;
     private EditText connectPort;
+    private LinearLayout devicesBox;
+    private LinearLayout gamesBox;
+    private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable devicePoll = new Runnable() {
+        @Override
+        public void run() {
+            MapperService.requestDevices();
+            refreshDevices();
+            ui.postDelayed(this, 2000);
+        }
+    };
+    private final android.hardware.input.InputManager.InputDeviceListener deviceListener =
+            new android.hardware.input.InputManager.InputDeviceListener() {
+                @Override
+                public void onInputDeviceAdded(int id) {
+                    refreshDevices();
+                }
+
+                @Override
+                public void onInputDeviceRemoved(int id) {
+                    refreshDevices();
+                }
+
+                @Override
+                public void onInputDeviceChanged(int id) {
+                    refreshDevices();
+                }
+            };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,6 +86,19 @@ public class MainActivity extends Activity implements MapperService.StatusListen
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
         slp.topMargin = p;
         col.addView(status, slp);
+
+        // devices
+        LinearLayout cd = card(col, "🖱⌨️ موس و کیبورد");
+        devicesBox = new LinearLayout(this);
+        devicesBox.setOrientation(LinearLayout.VERTICAL);
+        cd.addView(devicesBox);
+
+        // games
+        LinearLayout cg = card(col, "🎮 بازی‌های من");
+        gamesBox = new LinearLayout(this);
+        gamesBox.setOrientation(LinearLayout.VERTICAL);
+        cg.addView(gamesBox);
+        cg.addView(btn("+ افزودن بازی یا برنامه", v -> pickApp()));
 
         // 1. permissions
         LinearLayout c1 = card(col, "۱. دسترسی‌ها");
@@ -98,21 +139,15 @@ public class MainActivity extends Activity implements MapperService.StatusListen
             Toast.makeText(this, "کپی شد – برای Claude بفرست", Toast.LENGTH_SHORT).show();
         }));
 
-        // 4. play
-        LinearLayout c4 = card(col, "۴. بازی");
-        c4.addView(btn("نمایش دکمه شناور", v -> MapperService.send(this, MapperService.ACTION_SHOW)));
-        c4.addView(btn("ویرایش کلیدها (اول بازی را باز کن)", v -> {
-            MapperService.send(this, MapperService.ACTION_EDIT);
-            Toast.makeText(this, "بازی را باز کن؛ ویرایشگر روی آن باز است", Toast.LENGTH_LONG).show();
-        }));
+        // 5. help
+        LinearLayout c4 = card(col, "راهنمای بازی");
         c4.addView(text(
-                "• بازی را باز کن و کلید ` (زیر Esc) را بزن تا «حالت بازی» روشن شود: نشانگر موس قفل می‌شود و حرکت موس دوربین را می‌چرخاند.\n"
-                        + "• دوباره ` بزن تا به حالت موس معمولی برگردی (برای منوها و اینونتوری).\n"
+                "• بازی را از بخش «بازی‌های من» (بالای همین صفحه) با دکمه «اجرا» باز کن؛ دکمه شناور فقط داخل همان بازی ظاهر می‌شود.\n"
+                        + "• کلید ` (زیر Esc) «حالت بازی» را روشن/خاموش می‌کند: نشانگر موس قفل می‌شود و حرکت موس دوربین را می‌چرخاند.\n"
                         + "• دکمه شناور: آبی = حالت موس، سبز = حالت بازی، خاکستری = سرویس وصل نیست.\n"
                         + "• یک ضربه روی دکمه شناور = ویرایش دکمه‌ها (+ افزودن، چیدمان‌ها، برچسب‌ها، تنظیمات). برای ذخیره دوباره روی دکمه سبز بزن.\n"
                         + "• نگه داشتن دکمه شناور = روشن/خاموش کردن حالت بازی (بدون کیبورد).\n"
-                        + "• بار اول حتماً «ویرایش کلیدها» را روی صفحه بازی بزن و دایره‌ها را دقیقاً روی دکمه‌های بازی بکش.\n"
-                        + "• قبل از رفتن به حالت بازی، نشانگر موس را به گوشه صفحه ببر.", 14, 0xFFE0E0E0));
+                        + "• هر بازی چیدمان جداگانه خودش را دارد.", 14, 0xFFE0E0E0));
 
         requestNotificationPermission();
     }
@@ -125,12 +160,184 @@ public class MainActivity extends Activity implements MapperService.StatusListen
         overlayState.setText(ok ? "✓ اجازه نمایش روی برنامه‌ها داده شده" : "✗ اجازه نمایش روی برنامه‌ها داده نشده");
         overlayState.setTextColor(ok ? 0xFF81C784 : 0xFFE57373);
         if (ok) MapperService.send(this, MapperService.ACTION_SHOW);
+        getSystemService(android.hardware.input.InputManager.class).registerInputDeviceListener(deviceListener, ui);
+        ui.post(devicePoll);
+        refreshGames();
     }
 
     @Override
     protected void onPause() {
         MapperService.setStatusListener(null);
+        getSystemService(android.hardware.input.InputManager.class).unregisterInputDeviceListener(deviceListener);
+        ui.removeCallbacks(devicePoll);
         super.onPause();
+    }
+
+    // ------------------------------------------------------------------ devices
+
+    private void refreshDevices() {
+        if (devicesBox == null) return;
+        java.util.List<String> mice = new java.util.ArrayList<>();
+        java.util.List<String> keyboards = new java.util.ArrayList<>();
+        for (int id : android.view.InputDevice.getDeviceIds()) {
+            android.view.InputDevice d = android.view.InputDevice.getDevice(id);
+            if (d == null || d.isVirtual() || !d.isExternal()) continue;
+            if (d.supportsSource(android.view.InputDevice.SOURCE_MOUSE) && !mice.contains(d.getName())) mice.add(d.getName());
+            if (d.getKeyboardType() == android.view.InputDevice.KEYBOARD_TYPE_ALPHABETIC && !keyboards.contains(d.getName())) {
+                keyboards.add(d.getName());
+            }
+        }
+        devicesBox.removeAllViews();
+        devicesBox.addView(deviceLine("موس", mice));
+        devicesBox.addView(deviceLine("کیبورد", keyboards));
+
+        java.util.List<String> srv = MapperService.serverDevices();
+        TextView t;
+        if (srv.isEmpty()) {
+            t = text("سرویس: هنوز دستگاهی در اختیار سرویس نیست (بعد از فعال‌سازی و وصل کردن دستگاه‌ها چند ثانیه صبر کن)", 12, 0xFF9E9E9E);
+        } else {
+            StringBuilder sb = new StringBuilder("سرویس آماده است با: ");
+            for (int i = 0; i < srv.size(); i++) sb.append(i > 0 ? "، " : "").append(srv.get(i));
+            t = text(sb.toString(), 12, 0xFF81C784);
+        }
+        t.setPadding(0, Ui.dp(this, 6), 0, 0);
+        devicesBox.addView(t);
+    }
+
+    private TextView deviceLine(String kind, java.util.List<String> names) {
+        boolean ok = !names.isEmpty();
+        String s = ok ? "✓ " + kind + " وصل است: " + android.text.TextUtils.join("، ", names)
+                : "✗ " + kind + " وصل نیست";
+        return text(s, 15, ok ? 0xFF81C784 : 0xFFE57373);
+    }
+
+    // ------------------------------------------------------------------ games
+
+    private void refreshGames() {
+        gamesBox.removeAllViews();
+        java.util.List<String> pkgs = Games.saved(this);
+        if (pkgs.isEmpty()) {
+            gamesBox.addView(text("هنوز بازی‌ای اضافه نکردی. با دکمه زیر بازی (مثلاً Oxide) را انتخاب کن.", 14, 0xFF9E9E9E));
+            return;
+        }
+        for (String pkg : pkgs) {
+            Games.App app = Games.info(this, pkg);
+            if (app == null) continue;
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
+            android.widget.ImageView icon = new android.widget.ImageView(this);
+            icon.setImageDrawable(app.icon);
+            row.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
+            TextView name = text(app.label, 16, 0xFFFFFFFF);
+            name.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 12), 0);
+            row.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+            Button play = Ui.button(this, "▶ اجرا", v -> launch(pkg));
+            row.addView(play);
+            TextView del = text("✕", 20, 0xFF9E9E9E);
+            del.setPadding(Ui.dp(this, 14), Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6));
+            del.setOnClickListener(v -> {
+                Games.remove(this, pkg);
+                refreshGames();
+            });
+            row.addView(del);
+            gamesBox.addView(row);
+        }
+    }
+
+    private void launch(String pkg) {
+        if (!Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "اول اجازه «نمایش روی برنامه‌های دیگر» را بده", Toast.LENGTH_LONG).show();
+            return;
+        }
+        MapperService.launchGame(this, pkg);
+        if (!Games.launch(this, pkg)) {
+            Toast.makeText(this, "این برنامه باز نشد", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void pickApp() {
+        android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(this);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int p = Ui.dp(this, 12);
+        box.setPadding(p, p, p, 0);
+        EditText search = new EditText(this);
+        search.setHint("جستجو…");
+        box.addView(search);
+        TextView loading = text("در حال خواندن برنامه‌ها…", 14, 0xFF9E9E9E);
+        box.addView(loading);
+        android.widget.ListView list = new android.widget.ListView(this);
+        box.addView(list, new LinearLayout.LayoutParams(-1, Ui.dp(this, 420)));
+        b.setTitle("انتخاب بازی یا برنامه");
+        b.setView(box);
+        b.setNegativeButton("بستن", null);
+        android.app.AlertDialog dialog = b.show();
+
+        new Thread(() -> {
+            java.util.List<Games.App> all = Games.installed(this);
+            runOnUiThread(() -> {
+                loading.setVisibility(View.GONE);
+                java.util.List<Games.App> shown = new java.util.ArrayList<>(all);
+                android.widget.BaseAdapter adapter = new android.widget.BaseAdapter() {
+                    @Override
+                    public int getCount() {
+                        return shown.size();
+                    }
+
+                    @Override
+                    public Object getItem(int i) {
+                        return shown.get(i);
+                    }
+
+                    @Override
+                    public long getItemId(int i) {
+                        return i;
+                    }
+
+                    @Override
+                    public View getView(int i, View convert, android.view.ViewGroup parent) {
+                        LinearLayout row = new LinearLayout(MainActivity.this);
+                        row.setGravity(Gravity.CENTER_VERTICAL);
+                        row.setPadding(Ui.dp(MainActivity.this, 4), Ui.dp(MainActivity.this, 8), Ui.dp(MainActivity.this, 4), Ui.dp(MainActivity.this, 8));
+                        android.widget.ImageView icon = new android.widget.ImageView(MainActivity.this);
+                        icon.setImageDrawable(shown.get(i).icon);
+                        row.addView(icon, new LinearLayout.LayoutParams(Ui.dp(MainActivity.this, 40), Ui.dp(MainActivity.this, 40)));
+                        TextView t = new TextView(MainActivity.this);
+                        t.setText(shown.get(i).label);
+                        t.setTextSize(16);
+                        t.setPadding(Ui.dp(MainActivity.this, 12), 0, 0, 0);
+                        row.addView(t);
+                        return row;
+                    }
+                };
+                list.setAdapter(adapter);
+                list.setOnItemClickListener((parent, view, pos, id) -> {
+                    Games.add(this, shown.get(pos).pkg);
+                    refreshGames();
+                    dialog.dismiss();
+                });
+                search.addTextChangedListener(new android.text.TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(CharSequence s, int a, int b2, int c) {
+                    }
+
+                    @Override
+                    public void onTextChanged(CharSequence s, int a, int b2, int c) {
+                        String q = s.toString().trim().toLowerCase();
+                        shown.clear();
+                        for (Games.App app : all) {
+                            if (q.isEmpty() || app.label.toLowerCase().contains(q) || app.pkg.contains(q)) shown.add(app);
+                        }
+                        adapter.notifyDataSetChanged();
+                    }
+
+                    @Override
+                    public void afterTextChanged(android.text.Editable s) {
+                    }
+                });
+            });
+        }, "load-apps").start();
     }
 
     @Override

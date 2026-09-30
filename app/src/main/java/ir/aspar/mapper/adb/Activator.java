@@ -124,7 +124,9 @@ public final class Activator {
         try {
             String token = Prefs.newToken(ctx);
             String apk = ctx.getApplicationInfo().sourceDir;
-            String cmd = "OLD=$(pgrep -f " + PATTERN + "); [ -n \"$OLD\" ] && kill $OLD; sleep 0.3; "
+            // lets the app see which app is in front, so the menu only shows inside the chosen game
+            String cmd = "appops set " + ctx.getPackageName() + " GET_USAGE_STATS allow; "
+                    + "OLD=$(pgrep -f " + PATTERN + "); [ -n \"$OLD\" ] && kill $OLD; sleep 0.3; "
                     + "C=ir.aspar.mapper.server; "
                     + "if command -v setsid >/dev/null 2>&1; then S=setsid; else S=nohup; fi; "
                     + "CLASSPATH=" + apk + " $S app_process /system/bin $C.Server "

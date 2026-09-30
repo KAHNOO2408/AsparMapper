@@ -36,7 +36,9 @@ public class MapperService extends Service implements ServerClient.Listener {
     public static final String ACTION_TOGGLE = "ir.aspar.mapper.TOGGLE";
     public static final String ACTION_STOP = "ir.aspar.mapper.STOP";
     public static final String ACTION_DIAG = "ir.aspar.mapper.DIAG";
+    public static final String ACTION_SET_GAME = "ir.aspar.mapper.SET_GAME";
     public static final String EXTRA_PORT = "port";
+    public static final String EXTRA_PKG = "pkg";
 
     private static final String CHANNEL = "mapper";
     private static final int NOTIF_ID = 21;
@@ -49,6 +51,26 @@ public class MapperService extends Service implements ServerClient.Listener {
     private static volatile StatusListener statusListener;
     private static volatile MapperService running;
     private static volatile String lastMessage = "";
+    private static volatile java.util.List<String> serverDevices = new java.util.ArrayList<>();
+
+    /** Mouse/keyboard devices the helper found and can use (empty when it is not running). */
+    public static java.util.List<String> serverDevices() {
+        MapperService s = running;
+        if (s == null || s.client == null || !s.client.isConnected()) return new java.util.ArrayList<>();
+        return serverDevices;
+    }
+
+    /** Asks the helper for its current device list (answer arrives in serverDevices()). */
+    public static void requestDevices() {
+        MapperService s = running;
+        if (s != null && s.client != null && s.client.isConnected()) s.client.requestDevices();
+    }
+
+    /** Remembers which game was started from Aspar Mapper; the floating menu only shows inside it. */
+    public static void launchGame(Context ctx, String pkg) {
+        Intent i = new Intent(ctx, MapperService.class).setAction(ACTION_SET_GAME).putExtra(EXTRA_PKG, pkg);
+        ctx.startForegroundService(i);
+    }
 
     public static void setStatusListener(StatusListener l) {
         statusListener = l;
@@ -82,6 +104,9 @@ public class MapperService extends Service implements ServerClient.Listener {
     private boolean connected;
     private boolean gameMode;
     private volatile boolean activating;
+    private volatile String activeGame;
+    private volatile String foreground; // null = unknown (usage access not granted)
+    private volatile boolean watching = true;
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -93,10 +118,12 @@ public class MapperService extends Service implements ServerClient.Listener {
         super.onCreate();
         running = this;
         wm = getSystemService(WindowManager.class);
-        keyMap = KeyMap.load(this);
+        activeGame = Prefs.get(this).getString("active_game", null);
+        keyMap = KeyMap.load(this, activeGame);
         goForeground();
         client = new ServerClient(this, this);
         pushConfig();
+        startForegroundWatcher();
     }
 
     @Override
@@ -111,6 +138,16 @@ public class MapperService extends Service implements ServerClient.Listener {
             case ACTION_DIAG:
                 diagnose(intent.getIntExtra(EXTRA_PORT, 0));
                 break;
+            case ACTION_SET_GAME: {
+                String pkg = intent.getStringExtra(EXTRA_PKG);
+                activeGame = pkg;
+                Prefs.get(this).edit().putString("active_game", pkg).apply();
+                keyMap = KeyMap.load(this, pkg);
+                if (labels != null) labels.setKeyMap(keyMap);
+                pushConfig();
+                showOverlays();
+                break;
+            }
             case ACTION_EDIT:
                 showOverlays();
                 openEditor();
@@ -132,6 +169,7 @@ public class MapperService extends Service implements ServerClient.Listener {
     @Override
     public void onDestroy() {
         running = null;
+        watching = false;
         if (editor != null) editor.dismiss();
         removeView(bubbleRoot);
         removeView(labels);
@@ -163,6 +201,7 @@ public class MapperService extends Service implements ServerClient.Listener {
                 Prefs.get(this).edit().putString("last_activation", "OK: " + r).apply();
                 report("سرویس اجرا شد ✓ " + r);
                 main.post(this::showOverlays);
+                if (client != null) main.postDelayed(client::requestDevices, 3000);
             } catch (Throwable t) {
                 String msg = t.getMessage() != null ? t.getMessage() : t.toString();
                 if (t instanceof io.github.muntashirakon.adb.AdbPairingRequiredException) {
@@ -209,7 +248,12 @@ public class MapperService extends Service implements ServerClient.Listener {
     @Override
     public void onConnectionChanged(boolean c, String info) {
         connected = c;
-        if (c) pushConfig();
+        if (c) {
+            pushConfig();
+            client.requestDevices();
+        } else {
+            serverDevices = new java.util.ArrayList<>();
+        }
         updateBubble();
         report(c ? "سرویس " + info : "سرویس در دسترس نیست – «فعال‌سازی» را بزن\n(" + client.lastError() + ")");
     }
@@ -218,9 +262,14 @@ public class MapperService extends Service implements ServerClient.Listener {
     public void onGameModeChanged(boolean on) {
         gameMode = on;
         updateBubble();
-        if (labels != null) labels.setVisibility(on && Prefs.showLabels(this) ? View.VISIBLE : View.GONE);
+        refreshVisibility();
         StatusListener l = statusListener;
         if (l != null) l.onStatus(connected, gameMode, lastMessage);
+    }
+
+    @Override
+    public void onDevices(java.util.List<String> devices) {
+        serverDevices = devices;
     }
 
     private void pushConfig() {
@@ -248,10 +297,72 @@ public class MapperService extends Service implements ServerClient.Listener {
             WindowManager.LayoutParams lp = Ui.fullScreen(false, false);
             // Android blocks touches passing through overlays that are more than 80% opaque.
             lp.alpha = 0.6f;
-            labels.setVisibility(gameMode && Prefs.showLabels(this) ? View.VISIBLE : View.GONE);
+            labels.setVisibility(View.GONE);
             wm.addView(labels, lp);
         }
         if (bubbleRoot == null) createBubble();
+        refreshVisibility();
+    }
+
+    /** The game chosen in Aspar Mapper is on screen (or we cannot tell, then assume yes). */
+    private boolean inGame() {
+        if (activeGame == null) return false;
+        String fg = foreground;
+        return fg == null || activeGame.equals(fg);
+    }
+
+    /** Floating button and labels only appear inside the game that was started from Aspar Mapper. */
+    private void refreshVisibility() {
+        boolean in = inGame();
+        boolean editing = editor != null && editor.isShowing();
+        if (bubbleRoot != null) bubbleRoot.setVisibility(in && !editing ? View.VISIBLE : View.GONE);
+        if (labels != null) labels.setVisibility(in && gameMode && !editing && Prefs.showLabels(this) ? View.VISIBLE : View.GONE);
+        if (!in && gameMode && client != null) client.setGameMode(false); // give the keyboard back outside the game
+    }
+
+    private boolean hasUsageAccess() {
+        android.app.AppOpsManager ops = getSystemService(android.app.AppOpsManager.class);
+        int mode = ops.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(), getPackageName());
+        return mode == android.app.AppOpsManager.MODE_ALLOWED;
+    }
+
+    /** Polls which app is in front, using usage events (access is granted automatically on activation). */
+    private void startForegroundWatcher() {
+        Thread t = new Thread(() -> {
+            android.app.usage.UsageStatsManager usm = getSystemService(android.app.usage.UsageStatsManager.class);
+            long since = System.currentTimeMillis() - 60_000;
+            String current = null;
+            while (watching) {
+                try {
+                    if (hasUsageAccess()) {
+                        long now = System.currentTimeMillis();
+                        android.app.usage.UsageEvents events = usm.queryEvents(since, now);
+                        android.app.usage.UsageEvents.Event ev = new android.app.usage.UsageEvents.Event();
+                        while (events.hasNextEvent()) {
+                            events.getNextEvent(ev);
+                            if (ev.getEventType() == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) {
+                                current = ev.getPackageName();
+                            }
+                        }
+                        since = now - 1;
+                        if (current != null && !current.equals(foreground)) {
+                            foreground = current;
+                            main.post(this::refreshVisibility);
+                        }
+                    } else if (foreground != null) {
+                        foreground = null;
+                        main.post(this::refreshVisibility);
+                    }
+                    Thread.sleep(600);
+                } catch (InterruptedException e) {
+                    return;
+                } catch (Throwable ignored) {
+                }
+            }
+        }, "foreground-watch");
+        t.setDaemon(true);
+        t.start();
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -341,15 +452,14 @@ public class MapperService extends Service implements ServerClient.Listener {
             public void onEditorClosed(KeyMap saved) {
                 if (saved != null) {
                     keyMap = saved;
-                    keyMap.save(MapperService.this);
+                    keyMap.save(MapperService.this, activeGame);
                     if (labels != null) labels.setKeyMap(keyMap);
                     pushConfig();
                     report("چیدمان ذخیره شد ✓");
                     Toast.makeText(MapperService.this, "ذخیره شد ✓", Toast.LENGTH_SHORT).show();
                 }
-                if (bubbleRoot != null) bubbleRoot.setVisibility(View.VISIBLE);
-                onGameModeChanged(gameMode); // refresh labels visibility
                 editor = null;
+                refreshVisibility();
             }
 
             @Override
