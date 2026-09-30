@@ -132,6 +132,8 @@ public final class KeyMap {
     public int toggleKey = KeyNames.KEY_GRAVE;
     public int hideKey = -1; // shows/hides the floating button (for streaming)
     public int layoutKey = -1; // switches to the next layout of this game
+    public float cursorSpeed = 1.5f; // own mouse cursor speed (loot boxes / menus)
+    public float slotSize = 0.065f;  // Shift+drag transfer: distance between double-taps, fraction of height
     public final List<Element> elements = new ArrayList<>();
 
     public KeyMap copy() {
@@ -144,6 +146,8 @@ public final class KeyMap {
             root.put("toggleKey", toggleKey);
             root.put("hideKey", hideKey);
             root.put("layoutKey", layoutKey);
+            root.put("cursorSpeed", cursorSpeed);
+            root.put("slotSize", slotSize);
             JSONArray arr = new JSONArray();
             for (Element e : elements) arr.put(e.toJson());
             root.put("elements", arr);
@@ -160,6 +164,8 @@ public final class KeyMap {
             km.toggleKey = root.optInt("toggleKey", KeyNames.KEY_GRAVE);
             km.hideKey = root.optInt("hideKey", -1);
             km.layoutKey = root.optInt("layoutKey", -1);
+            km.cursorSpeed = (float) root.optDouble("cursorSpeed", 1.5);
+            km.slotSize = (float) root.optDouble("slotSize", 0.065);
             JSONArray arr = root.optJSONArray("elements");
             if (arr != null) {
                 for (int i = 0; i < arr.length(); i++) km.elements.add(Element.fromJson(arr.getJSONObject(i)));
@@ -177,6 +183,8 @@ public final class KeyMap {
         cfg.put("toggleKey", toggleKey);
         cfg.put("hideKey", hideKey);
         cfg.put("layoutKey", layoutKey);
+        cfg.put("cursorSpeed", cursorSpeed);
+        cfg.put("slotSize", slotSize * height);
         cfg.put("w", width);
         cfg.put("h", height);
         JSONArray arr = new JSONArray();

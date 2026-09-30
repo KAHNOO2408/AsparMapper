@@ -107,6 +107,11 @@ public class MapperService extends Service implements ServerClient.Listener {
     private boolean connected;
     private boolean gameMode;
     private volatile boolean activating;
+    private boolean lootMode;          // mouse mode opened by a loot/inventory key: show only the cursor
+    private Boolean cursorSent;        // last "own cursor" state told to the helper
+    private boolean cursorOn;          // helper says its cursor is visible
+    private CursorView cursorView;
+    private WindowManager.LayoutParams cursorLp;
     private volatile String activeGame;
     private volatile String foreground; // from usage stats; null = unknown
     private volatile String serverForeground; // from the helper (most reliable); null = unknown
@@ -188,6 +193,7 @@ public class MapperService extends Service implements ServerClient.Listener {
         if (editor != null) editor.dismiss();
         removeView(bubbleRoot);
         removeView(labels);
+        removeView(cursorView);
         if (client != null) client.close();
         report("متوقف شد");
         super.onDestroy();
@@ -276,8 +282,41 @@ public class MapperService extends Service implements ServerClient.Listener {
     }
 
     @Override
+    public void onModeVia(String via) {
+        lootMode = "loot".equals(via);
+    }
+
+    @Override
+    public void onCursor(float x, float y, boolean on) {
+        cursorOn = on;
+        if (cursorView == null) {
+            if (!canDrawOverlays()) return;
+            cursorView = new CursorView(this);
+            int size = Ui.dp(this, 26);
+            cursorLp = new WindowManager.LayoutParams(size, size,
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    android.graphics.PixelFormat.TRANSLUCENT);
+            cursorLp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
+            cursorLp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+            cursorView.setVisibility(View.GONE);
+            wm.addView(cursorView, cursorLp);
+        }
+        // the window starts 1px right/below the tip, so the injected touch at the tip is never covered by it
+        cursorLp.x = (int) x + 1;
+        cursorLp.y = (int) y + 1;
+        try {
+            wm.updateViewLayout(cursorView, cursorLp);
+        } catch (Exception ignored) {
+        }
+        refreshVisibility();
+    }
+
+    @Override
     public void onGameModeChanged(boolean on) {
         gameMode = on;
+        if (on) lootMode = false;
         updateBubble();
         refreshVisibility();
         StatusListener l = statusListener;
@@ -361,7 +400,16 @@ public class MapperService extends Service implements ServerClient.Listener {
         boolean editing = editor != null && editor.isShowing();
         boolean stream = Prefs.bubbleHidden(this);
         // hidden while playing (game mode) and in stream mode, so viewers never see it
-        if (bubbleRoot != null) bubbleRoot.setVisibility(in && !editing && !gameMode && !stream ? View.VISIBLE : View.GONE);
+        // in a loot box (mouse freed by a loot key) only the mouse pointer is shown
+        if (bubbleRoot != null) bubbleRoot.setVisibility(in && !editing && !gameMode && !lootMode && !stream ? View.VISIBLE : View.GONE);
+        // own cursor inside the game (not while editing: the editor is used with the normal pointer)
+        boolean wantCursor = in && connected && !editing;
+        if (client != null && connected && (cursorSent == null || cursorSent != wantCursor)) {
+            cursorSent = wantCursor;
+            client.setCursor(wantCursor);
+        }
+        if (!connected) cursorSent = null;
+        if (cursorView != null) cursorView.setVisibility(wantCursor && cursorOn && !gameMode ? View.VISIBLE : View.GONE);
         if (labels != null) labels.setVisibility(in && gameMode && !editing && !stream && Prefs.showLabels(this) ? View.VISIBLE : View.GONE);
         if (!in && gameMode && client != null) client.setGameMode(false); // give the keyboard back outside the game
     }
@@ -537,6 +585,7 @@ public class MapperService extends Service implements ServerClient.Listener {
             }
         });
         editor.show();
+        refreshVisibility(); // normal system pointer while editing
     }
 
     private void removeView(View v) {

@@ -324,7 +324,8 @@ final class DeviceManager {
             byte[] buf = new byte[EVENT_SIZE];
             int failures = 0;
             while (alive && running) {
-                boolean wantGrab = mapper.isGameMode();
+                // keyboards only in game mode; mice also while the app shows its own cursor (loot boxes)
+                boolean wantGrab = isKeyboard ? mapper.isGameMode() : mapper.isGameMode() || mapper.isCursorActive();
                 FileInputStream in;
                 try {
                     in = new FileInputStream(path);

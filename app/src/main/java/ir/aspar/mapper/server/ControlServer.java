@@ -65,6 +65,20 @@ final class ControlServer {
         }
     }
 
+    /** Sends any JSON event line to the app. */
+    void sendJson(JSONObject o) {
+        OutputStream out = client;
+        if (out == null) return;
+        try {
+            synchronized (this) {
+                out.write((o + "\n").getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+        } catch (Exception e) {
+            client = null;
+        }
+    }
+
     void sendEvent(String name, boolean value) {
         OutputStream out = client;
         if (out == null) return;
@@ -110,6 +124,9 @@ final class ControlServer {
                 } else if ("config".equals(cmd)) {
                     mapper.setConfig(req);
                     res.put("ok", true);
+                } else if ("cursor".equals(cmd)) {
+                    mapper.setCursorActive(req.optBoolean("on"));
+                    res.put("ok", true);
                 } else if ("mode".equals(cmd)) {
                     mapper.setGameMode(req.optBoolean("game"));
                     res.put("ok", true);
@@ -133,6 +150,11 @@ final class ControlServer {
         } catch (Exception e) {
             Log.w("client disconnected: " + e);
         } finally {
+            if (authed && client == out) {
+                // the app went away: give mouse and keyboard back to the system
+                mapper.setCursorActive(false);
+                mapper.setGameMode(false);
+            }
             if (client == out) client = null;
             try {
                 s.close();

@@ -31,9 +31,13 @@ public final class ServerClient {
         void onHideToggle();
 
         void onNextLayout();
+
+        void onCursor(float x, float y, boolean on);
+
+        void onModeVia(String via);
     }
 
-    public static final int EXPECTED_VERSION = 2;
+    public static final int EXPECTED_VERSION = 3;
 
     private final android.content.Context ctx;
     private final Listener listener;
@@ -81,6 +85,17 @@ public final class ServerClient {
     public void sendConfig(JSONObject cfg) {
         pendingConfig = cfg;
         send(cfg);
+    }
+
+    /** Our own mouse cursor inside the game (mouse is taken over, clicks become touches). */
+    public void setCursor(boolean on) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("cmd", "cursor");
+            o.put("on", on);
+            send(o);
+        } catch (Exception ignored) {
+        }
     }
 
     public void setGameMode(boolean on) {
@@ -183,10 +198,20 @@ public final class ServerClient {
                         String pkg = msg.optString("value");
                         main.post(() -> listener.onForeground(pkg));
                     }
+                    if ("cursor".equals(msg.optString("event"))) {
+                        float cx = (float) msg.optDouble("x");
+                        float cy = (float) msg.optDouble("y");
+                        boolean on = msg.optBoolean("on");
+                        main.post(() -> listener.onCursor(cx, cy, on));
+                    }
                     if ("mode".equals(msg.optString("event"))) {
                         gameMode = msg.optBoolean("value");
                         boolean gm = gameMode;
-                        main.post(() -> listener.onGameModeChanged(gm));
+                        String via = msg.optString("via", "toggle");
+                        main.post(() -> {
+                            listener.onModeVia(via);
+                            listener.onGameModeChanged(gm);
+                        });
                     }
                 }
             } catch (Exception e) {

@@ -41,6 +41,8 @@ final class Layouts {
             m.toggleKey = km.toggleKey;
             m.hideKey = km.hideKey;
             m.layoutKey = km.layoutKey;
+            m.cursorSpeed = km.cursorSpeed;
+            m.slotSize = km.slotSize;
         }
     }
 
@@ -49,6 +51,8 @@ final class Layouts {
         km.toggleKey = base.toggleKey;
         km.hideKey = base.hideKey;
         km.layoutKey = base.layoutKey;
+        km.cursorSpeed = base.cursorSpeed;
+        km.slotSize = base.slotSize;
         names.add(name);
         maps.add(km);
         current = maps.size() - 1;

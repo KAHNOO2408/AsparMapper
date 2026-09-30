@@ -32,6 +32,25 @@ final class Mapper {
 
     // finger keys (must not collide with tap element indexes, which start at 100)
     private static final int FINGER_LOOK = 2;
+    private static final int FINGER_CURSOR = 3;
+    private static final int KEY_LEFTSHIFT = 42;
+    private static final int KEY_RIGHTSHIFT = 54;
+    private static final int BTN_LEFT = 272;
+    private static final int BTN_RIGHT = 273;
+
+    // own mouse cursor (mouse grabbed, clicks become touches) – used in mouse mode inside the game
+    private volatile boolean cursorActive;
+    private float curX;
+    private float curY;
+    private boolean cursorPressed;
+    private boolean transferring;       // Shift + left button: double-tap every slot the cursor passes
+    private float lastTapX;
+    private float lastTapY;
+    private long lastCursorSent;
+    private boolean cursorDirty;
+    private float cursorSpeed = 1.5f;
+    private float slotSize = 70f;
+    private final Set<Integer> held = new HashSet<>(); // every key currently held, in any mode
 
     private static final class Element {
         String type;
@@ -105,6 +124,128 @@ final class Mapper {
         return gameMode;
     }
 
+    boolean isCursorActive() {
+        return cursorActive;
+    }
+
+    void setCursorActive(boolean on) {
+        synchronized (this) {
+            if (cursorActive == on) return;
+            cursorActive = on;
+            touch.up(FINGER_CURSOR);
+            cursorPressed = false;
+            transferring = false;
+            if (on) {
+                curX = screenW / 2f;
+                curY = screenH / 2f;
+            }
+        }
+        Log.i("own cursor = " + on);
+        if (devices != null) devices.applyGrabState();
+        sendCursor(true);
+    }
+
+    private void sendCursor(boolean force) {
+        if (control == null) return;
+        long now = SystemClock.uptimeMillis();
+        if (!force && now - lastCursorSent < 8) {
+            cursorDirty = true;
+            return;
+        }
+        lastCursorSent = now;
+        cursorDirty = false;
+        try {
+            JSONObject o = new JSONObject();
+            o.put("event", "cursor");
+            o.put("x", curX);
+            o.put("y", curY);
+            o.put("on", cursorActive && !gameMode);
+            control.sendJson(o);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private boolean ownCursor() {
+        return cursorActive && !gameMode;
+    }
+
+    private void cursorMove(int dx, int dy) {
+        curX = Math.max(0, Math.min(screenW - 1, curX + dx * cursorSpeed));
+        curY = Math.max(0, Math.min(screenH - 1, curY + dy * cursorSpeed));
+        if (transferring) {
+            if (Math.hypot(curX - lastTapX, curY - lastTapY) >= slotSize) doubleTapAtCursor();
+        } else if (cursorPressed) {
+            touch.move(FINGER_CURSOR, curX, curY);
+        }
+        sendCursor(false);
+    }
+
+    private void doubleTapAtCursor() {
+        lastTapX = curX;
+        lastTapY = curY;
+        final float x = curX;
+        final float y = curY;
+        taps.execute(() -> {
+            for (int i = 0; i < 2; i++) {
+                synchronized (this) {
+                    touch.down(FINGER_CURSOR + 20, x, y);
+                }
+                SystemClock.sleep(30);
+                synchronized (this) {
+                    touch.up(FINGER_CURSOR + 20);
+                }
+                SystemClock.sleep(50);
+            }
+        });
+    }
+
+    /** Mouse buttons while our own cursor is shown. Returns true when handled. */
+    private boolean cursorButton(int code, boolean down) {
+        if (code != BTN_LEFT && code != BTN_RIGHT) return false;
+        synchronized (this) {
+            if (down) {
+                if (code == BTN_LEFT && (held.contains(KEY_LEFTSHIFT) || held.contains(KEY_RIGHTSHIFT))) {
+                    transferring = true;
+                    doubleTapAtCursor();
+                } else if (!cursorPressed) {
+                    cursorPressed = true;
+                    touch.down(FINGER_CURSOR, curX, curY);
+                }
+            } else {
+                if (transferring && code == BTN_LEFT) {
+                    transferring = false;
+                } else if (cursorPressed) {
+                    cursorPressed = false;
+                    touch.up(FINGER_CURSOR);
+                }
+            }
+        }
+        return true;
+    }
+
+    /** Mouse wheel with our own cursor: swipe the list under the cursor. */
+    private void cursorScroll(int value) {
+        final float x = curX;
+        final float y = curY;
+        final float dist = Math.min(screenH * 0.12f, 140f) * (value > 0 ? 1 : -1); // wheel up = content down
+        taps.execute(() -> {
+            int f = FINGER_CURSOR + 21;
+            synchronized (this) {
+                touch.down(f, x, y);
+            }
+            for (int i = 1; i <= 4; i++) {
+                SystemClock.sleep(12);
+                synchronized (this) {
+                    touch.move(f, x, y + dist * i / 4f);
+                }
+            }
+            SystemClock.sleep(12);
+            synchronized (this) {
+                touch.up(f);
+            }
+        });
+    }
+
     // ------------------------------------------------------------------ config
 
     synchronized void setConfig(JSONObject cfg) {
@@ -113,6 +254,8 @@ final class Mapper {
         elements.clear();
         toggleKey = cfg.optInt("toggleKey", 41);
         hideKey = cfg.optInt("hideKey", -1);
+        cursorSpeed = (float) cfg.optDouble("cursorSpeed", 1.5);
+        slotSize = (float) cfg.optDouble("slotSize", 70);
         layoutKey = cfg.optInt("layoutKey", -1);
         screenW = (float) cfg.optDouble("w", screenW);
         screenH = (float) cfg.optDouble("h", screenH);
@@ -159,8 +302,15 @@ final class Mapper {
     }
 
     void setGameMode(boolean on) {
+        setGameMode(on, "toggle");
+    }
+
+    void setGameMode(boolean on, String via) {
         synchronized (this) {
             if (gameMode == on) return;
+            touch.up(FINGER_CURSOR);
+            cursorPressed = false;
+            transferring = false;
             gameMode = on;
             touch.releaseAll();
             pressed.clear();
@@ -173,7 +323,17 @@ final class Mapper {
         }
         Log.i("game mode = " + on);
         if (devices != null) devices.applyGrabState();
-        if (control != null) control.sendEvent("mode", on);
+        if (control != null) {
+            try {
+                JSONObject o = new JSONObject();
+                o.put("event", "mode");
+                o.put("value", on);
+                o.put("via", via);
+                control.sendJson(o);
+            } catch (Exception ignored) {
+            }
+        }
+        sendCursor(true);
     }
 
     // ------------------------------------------------------------------ events
@@ -190,8 +350,9 @@ final class Mapper {
                 synchronized (this) {
                     pendingDy += value;
                 }
-            } else if (code == DeviceManager.REL_WHEEL && value != 0 && gameMode) {
-                wheel(value > 0 ? WHEEL_UP : WHEEL_DOWN);
+            } else if (code == DeviceManager.REL_WHEEL && value != 0) {
+                if (gameMode) wheel(value > 0 ? WHEEL_UP : WHEEL_DOWN);
+                else if (ownCursor()) cursorScroll(value);
             }
         } else if (type == DeviceManager.EV_SYN && code == DeviceManager.SYN_REPORT) {
             flushMouse();
@@ -201,6 +362,11 @@ final class Mapper {
     private void onKey(int code, int value) {
         if (value == 2) return; // auto-repeat
         boolean down = value == 1;
+        synchronized (this) {
+            if (down) held.add(code);
+            else held.remove(code);
+        }
+        if (ownCursor() && cursorButton(code, down)) return;
 
         if (layoutKey > 0 && code == layoutKey) {
             if (!down && control != null) control.sendEvent("nextLayout", true);
@@ -231,7 +397,7 @@ final class Mapper {
                 synchronized (this) {
                     touch.up(cursorKey.finger);
                 }
-                setGameMode(!gameMode);
+                setGameMode(!gameMode, "loot");
             }
             return;
         }
@@ -395,7 +561,12 @@ final class Mapper {
         int dx = pendingDx;
         int dy = pendingDy;
         pendingDx = pendingDy = 0;
-        if (!gameMode || (dx == 0 && dy == 0)) return;
+        if (dx == 0 && dy == 0) return;
+        if (ownCursor()) {
+            cursorMove(dx, dy);
+            return;
+        }
+        if (!gameMode) return;
         Element look = null;
         for (Element e : elements) {
             if ("look".equals(e.type)) look = e;
@@ -432,11 +603,12 @@ final class Mapper {
     /** Lift the camera finger when the mouse stops, so it does not block other touches. */
     private void idleLoop() {
         while (true) {
-            SystemClock.sleep(50);
+            SystemClock.sleep(16);
             synchronized (this) {
                 if (touch.isDown(FINGER_LOOK) && SystemClock.uptimeMillis() - lastLookMove > 250) {
                     touch.up(FINGER_LOOK);
                 }
+                if (cursorDirty) sendCursor(true);
             }
         }
     }

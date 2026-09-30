@@ -13,7 +13,7 @@ import android.os.Looper;
  */
 public final class Server {
 
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
 
     private Server() {
     }
