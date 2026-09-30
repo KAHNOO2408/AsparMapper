@@ -80,6 +80,9 @@ final class Mapper {
         float[][] steps = new float[0][];
         long delay = 120;
         int cycle = -1;         // wheel: current slot
+        float ex;               // swipe: end point
+        float ey;
+        long dur = 250;
     }
 
     private final java.util.concurrent.ExecutorService taps = java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -314,6 +317,9 @@ final class Mapper {
                 e.adsSens = (float) o.optDouble("adsSens", e.sens);
                 e.adsKey = o.optInt("adsKey", -1);
                 e.delay = o.optLong("delay", 120);
+                e.ex = (float) o.optDouble("ex", e.x);
+                e.ey = (float) o.optDouble("ey", e.y);
+                e.dur = o.optLong("dur", 250);
                 JSONArray st = o.optJSONArray("steps");
                 if (st != null) {
                     e.steps = new float[st.length()][];
@@ -431,7 +437,17 @@ final class Mapper {
             return;
         }
 
-        if (!gameMode) return;
+        if (!gameMode) {
+            // swipes also work with the free mouse (e.g. build menus)
+            if (down) {
+                synchronized (this) {
+                    for (Element e : elements) {
+                        if ("swipe".equals(e.type) && e.key == code) swipe(e);
+                    }
+                }
+            }
+            return;
+        }
 
         synchronized (this) {
             if (down) {
@@ -451,6 +467,8 @@ final class Mapper {
                     }
                 } else if ("macro".equals(e.type) && e.key == code) {
                     if (down) runMacro(e);
+                } else if ("swipe".equals(e.type) && e.key == code) {
+                    if (down) swipe(e);
                 } else if ("toggle".equals(e.type) && e.key == code) {
                     // press once = finger stays down, press again = release
                     if (down) {
@@ -552,6 +570,30 @@ final class Mapper {
                 touch.up(finger);
             }
             SystemClock.sleep(15);
+        });
+    }
+
+    /** Drags a finger from the start point to the end point, like a real swipe. */
+    private void swipe(Element e) {
+        final int f = e.finger;
+        final float x0 = e.x, y0 = e.y, x1 = e.ex, y1 = e.ey;
+        final int steps = (int) Math.max(4, Math.min(60, e.dur / 12));
+        final long stepMs = Math.max(4, e.dur / steps);
+        taps.execute(() -> {
+            synchronized (this) {
+                touch.down(f, x0, y0);
+            }
+            for (int i = 1; i <= steps; i++) {
+                SystemClock.sleep(stepMs);
+                float t = i / (float) steps;
+                synchronized (this) {
+                    touch.move(f, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+                }
+            }
+            SystemClock.sleep(30);
+            synchronized (this) {
+                touch.up(f);
+            }
         });
     }
 

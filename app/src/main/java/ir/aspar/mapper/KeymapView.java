@@ -97,6 +97,19 @@ class KeymapView extends View {
                 text.setColor(0xFFFFFFFF);
                 canvas.drawText("🏃", x, sy + Ui.dp(getContext(), 5), text);
             }
+            if (KeyMap.SWIPE.equals(e.type)) {
+                // arrow from the start (key circle) to the end point
+                float exv = e.ex * s.x - loc[0];
+                float eyv = e.ey * s.y - loc[1];
+                stroke.setColor(0xFFAB47BC);
+                canvas.drawLine(x, y, exv, eyv, stroke);
+                double ang = Math.atan2(eyv - y, exv - x);
+                float ah = keyRadius * 0.7f;
+                canvas.drawLine(exv, eyv, (float) (exv - ah * Math.cos(ang - 0.5)), (float) (eyv - ah * Math.sin(ang - 0.5)), stroke);
+                canvas.drawLine(exv, eyv, (float) (exv - ah * Math.cos(ang + 0.5)), (float) (eyv - ah * Math.sin(ang + 0.5)), stroke);
+                fill.setColor(0x88AB47BC);
+                canvas.drawCircle(exv, eyv, keyRadius * 0.55f, fill);
+            }
             float kr = radiusOf(e);
             fill.setColor(sel ? 0xDDFFC107 : 0xAA000000);
             canvas.drawCircle(x, y, kr, fill);

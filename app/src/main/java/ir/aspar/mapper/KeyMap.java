@@ -19,6 +19,7 @@ public final class KeyMap {
     public static final String TOGGLE = "toggle";
     public static final String MACRO = "macro";
     public static final String WHEEL = "wheel";
+    public static final String SWIPE = "swipe";
 
     public static final class Element {
         public String type = TAP;
@@ -40,6 +41,8 @@ public final class KeyMap {
         public int adsKey = KeyNames.BTN_RIGHT;
         public final List<float[]> steps = new ArrayList<>(); // macro/wheel: points as screen fractions
         public int delay = 120;          // macro: ms between steps
+        public float ex = 0.6f, ey = 0.5f; // swipe: end point (fractions)
+        public int duration = 250;       // swipe: ms from start to end
 
         public String label() {
             switch (type) {
@@ -54,6 +57,8 @@ public final class KeyMap {
                     return KeyNames.shortName(key) + "⚡";
                 case WHEEL:
                     return "⇅";
+                case SWIPE:
+                    return KeyNames.shortName(key) + "↔";
                 default:
                     return KeyNames.shortName(key) + (cursor ? "🖱" : "");
             }
@@ -83,6 +88,9 @@ public final class KeyMap {
             o.put("adsSens", adsSens);
             o.put("adsKey", adsKey);
             o.put("delay", delay);
+            o.put("ex", ex);
+            o.put("ey", ey);
+            o.put("duration", duration);
             JSONArray st = new JSONArray();
             for (float[] p : steps) {
                 JSONArray pt = new JSONArray();
@@ -118,6 +126,9 @@ public final class KeyMap {
             e.adsSens = (float) o.optDouble("adsSens", e.sens * 0.5);
             e.adsKey = o.optInt("adsKey", KeyNames.BTN_RIGHT);
             e.delay = o.optInt("delay", 120);
+            e.ex = (float) o.optDouble("ex", e.fx + 0.1);
+            e.ey = (float) o.optDouble("ey", e.fy);
+            e.duration = o.optInt("duration", 250);
             JSONArray st = o.optJSONArray("steps");
             if (st != null) {
                 for (int i = 0; i < st.length(); i++) {
@@ -212,6 +223,11 @@ public final class KeyMap {
                 o.put("adsSens", e.adsSens);
                 o.put("adsKey", e.adsKey);
                 o.put("lim", e.size * height);
+            } else if (SWIPE.equals(e.type)) {
+                o.put("key", e.key);
+                o.put("ex", e.ex * width);
+                o.put("ey", e.ey * height);
+                o.put("dur", e.duration);
             } else if (MACRO.equals(e.type) || WHEEL.equals(e.type)) {
                 o.put("key", e.key);
                 o.put("delay", e.delay);

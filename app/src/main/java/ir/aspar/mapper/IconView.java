@@ -11,7 +11,7 @@ import android.view.View;
 /** Small vector icons drawn in code (no image resources needed). */
 final class IconView extends View {
 
-    enum Kind { MACRO, WHEEL, PLUS, LAYERS, KEYBOARD, SLIDERS, MOUSE, KEY, WASD, ARROWS, HOLD, CHEVRON_UP, CLOSE, CHECK, TRASH, GAMEPAD }
+    enum Kind { SWIPE, MACRO, WHEEL, PLUS, LAYERS, KEYBOARD, SLIDERS, MOUSE, KEY, WASD, ARROWS, HOLD, CHEVRON_UP, CLOSE, CHECK, TRASH, GAMEPAD }
 
     private final Kind kind;
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -114,6 +114,10 @@ final class IconView extends View {
             case KEY:
                 text.setTextSize(s * 0.36f);
                 c.drawText("A", cx, cy + s * 0.13f, text);
+                break;
+            case SWIPE:
+                text.setTextSize(s * 0.36f);
+                c.drawText("↔", cx, cy + s * 0.13f, text);
                 break;
             case MACRO:
                 text.setTextSize(s * 0.34f);

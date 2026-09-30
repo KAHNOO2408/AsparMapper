@@ -350,6 +350,11 @@ final class EditorOverlay {
             row2b.addView(space(dp(36)));
             row2b.addView(item(IconView.Kind.WHEEL, DARK, "چرخ موس", v -> addSteps(KeyMap.WHEEL)));
             page.addView(row2b);
+            LinearLayout row3b = new LinearLayout(ctx);
+            row3b.setGravity(Gravity.CENTER);
+            row3b.setPadding(0, dp(10), 0, 0);
+            row3b.addView(item(IconView.Kind.SWIPE, DARK, "کشیدن", v -> addSwipe()));
+            page.addView(row3b);
         }
         col.addView(page, new LinearLayout.LayoutParams(-1, -2));
 
@@ -518,6 +523,16 @@ final class EditorOverlay {
         return e;
     }
 
+    private void addSwipe() {
+        KeyMap.Element e = newElementAtCenter(KeyMap.SWIPE);
+        e.ex = Math.min(0.95f, e.fx + 0.15f);
+        e.ey = e.fy;
+        keyMap.elements.add(e);
+        closePanel();
+        select(e);
+        showHint("دایره = شروع کشیدن، نقطه بنفش = پایان. هر دو را جابه‌جا کن و یک کلید بزن", 4000);
+    }
+
     private void addSteps(String type) {
         KeyMap.Element e = newElementAtCenter(type);
         keyMap.elements.add(e);
@@ -599,7 +614,8 @@ final class EditorOverlay {
             hidePopup();
             return;
         }
-        if (KeyMap.TAP.equals(e.type) || KeyMap.TOGGLE.equals(e.type) || KeyMap.MACRO.equals(e.type)) wait = Wait.KEY;
+        if (KeyMap.TAP.equals(e.type) || KeyMap.TOGGLE.equals(e.type) || KeyMap.MACRO.equals(e.type)
+                || KeyMap.SWIPE.equals(e.type)) wait = Wait.KEY;
         buildPopup();
     }
 
@@ -738,6 +754,31 @@ final class EditorOverlay {
             r2.addView(chip("محدوده −", v -> resize(e, -0.02f)));
             r2.addView(chip("محدوده +", v -> resize(e, 0.02f)));
             popup.addView(r2);
+        } else if (KeyMap.SWIPE.equals(e.type)) {
+            popup.addView(small("کلید: " + KeyNames.name(e.key) + " (برای تغییر یک کلید بزن)", 0xFFFFFFFF));
+            popup.addView(small("دایره = شروع، نقطه بنفش = پایان؛ هر دو را بکش", 0xFFAAAAAA));
+            popup.addView(small("سرعت کشیدن: " + e.duration + " میلی‌ثانیه", 0xFFFFFFFF));
+            LinearLayout rs = new LinearLayout(ctx);
+            rs.addView(chip("سریع‌تر", v -> {
+                e.duration = Math.max(60, e.duration - 50);
+                buildPopup();
+            }));
+            rs.addView(chip("آهسته‌تر", v -> {
+                e.duration = Math.min(2000, e.duration + 50);
+                buildPopup();
+            }));
+            popup.addView(rs);
+            LinearLayout rw = new LinearLayout(ctx);
+            rw.addView(chip("⇄ برعکس کردن جهت", v -> {
+                float tx = e.fx, ty = e.fy;
+                e.fx = e.ex;
+                e.fy = e.ey;
+                e.ex = tx;
+                e.ey = ty;
+                canvas.invalidate();
+                buildPopup();
+            }));
+            popup.addView(rw);
         } else if (KeyMap.MACRO.equals(e.type) || KeyMap.WHEEL.equals(e.type)) {
             boolean macro = KeyMap.MACRO.equals(e.type);
             if (macro) {
@@ -784,6 +825,8 @@ final class EditorOverlay {
                 return "ماکرو";
             case KeyMap.WHEEL:
                 return "چرخ موس (خانه‌ها)";
+            case KeyMap.SWIPE:
+                return "کشیدن";
             default:
                 return "کلید";
         }
@@ -1075,6 +1118,7 @@ final class EditorOverlay {
     private final class EditCanvas extends KeymapView {
         private KeyMap.Element dragging;
         private KeyMap.Element draggingSprint;
+        private KeyMap.Element draggingEnd;
         private float downX, downY, grabDx, grabDy;
         private boolean moved;
 
@@ -1095,6 +1139,11 @@ final class EditorOverlay {
             }
             switch (ev.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
+                    draggingEnd = hitEnd(ev.getX(), ev.getY());
+                    if (draggingEnd != null) {
+                        popup.setVisibility(View.GONE);
+                        return true;
+                    }
                     draggingSprint = hitSprint(ev.getX(), ev.getY());
                     if (draggingSprint != null) {
                         popup.setVisibility(View.GONE);
@@ -1110,6 +1159,12 @@ final class EditorOverlay {
                     }
                     return true;
                 case MotionEvent.ACTION_MOVE:
+                    if (draggingEnd != null) {
+                        draggingEnd.ex = clamp(toFractionX(ev.getX()), 0f, 1f);
+                        draggingEnd.ey = clamp(toFractionY(ev.getY()), 0f, 1f);
+                        invalidate();
+                        return true;
+                    }
                     if (draggingSprint != null) {
                         KeyMap.Element j = draggingSprint;
                         float r = j.size * screen().y;
@@ -1129,6 +1184,11 @@ final class EditorOverlay {
                     }
                     return true;
                 case MotionEvent.ACTION_UP:
+                    if (draggingEnd != null) {
+                        select(draggingEnd);
+                        draggingEnd = null;
+                        return true;
+                    }
                     if (draggingSprint != null) {
                         select(draggingSprint);
                         draggingSprint = null;
@@ -1145,6 +1205,14 @@ final class EditorOverlay {
                 default:
                     return true;
             }
+        }
+
+        private KeyMap.Element hitEnd(float x, float y) {
+            for (KeyMap.Element e : keyMap.elements) {
+                if (!KeyMap.SWIPE.equals(e.type)) continue;
+                if (Math.hypot(toViewX(e.ex) - x, toViewY(e.ey) - y) < dp(24)) return e;
+            }
+            return null;
         }
 
         private KeyMap.Element hitSprint(float x, float y) {
