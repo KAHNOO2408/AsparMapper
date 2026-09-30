@@ -347,7 +347,10 @@ final class Mapper {
             cursorPressed = false;
             transferring = false;
             gameMode = on;
-            touch.releaseAll();
+            // locked buttons (e.g. voice) stay pressed across mode changes
+            Set<Integer> keep = new HashSet<>();
+            for (Element e : elements) if ("toggle".equals(e.type)) keep.add(e.finger);
+            touch.releaseAllExcept(keep);
             pressed.clear();
             pendingDx = pendingDy = 0;
             for (Element e : elements) {
@@ -443,6 +446,10 @@ final class Mapper {
                 synchronized (this) {
                     for (Element e : elements) {
                         if ("swipe".equals(e.type) && e.key == code) swipe(e);
+                        if ("toggle".equals(e.type) && e.key == code && !e.cursor) {
+                            if (touch.isDown(e.finger)) touch.up(e.finger);
+                            else touch.down(e.finger, e.x, e.y);
+                        }
                     }
                 }
             }

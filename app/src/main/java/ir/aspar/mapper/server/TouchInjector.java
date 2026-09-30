@@ -109,6 +109,14 @@ final class TouchInjector {
         fingers.remove(index);
     }
 
+    /** Lifts every finger except the given ones (e.g. a voice button locked on). */
+    synchronized void releaseAllExcept(java.util.Set<Integer> keep) {
+        for (int i = fingers.size() - 1; i >= 0; i--) {
+            int key = fingers.get(i).key;
+            if (!keep.contains(key)) up(key);
+        }
+    }
+
     synchronized void releaseAll() {
         while (!fingers.isEmpty()) {
             up(fingers.get(fingers.size() - 1).key);

@@ -675,6 +675,20 @@ final class EditorOverlay {
             });
             cur.setBackground(round(e.cursor ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
             popup.addView(cur);
+            boolean locked = KeyMap.TOGGLE.equals(e.type);
+            TextView lk = chip(locked ? "🔒 یک بار روشن، بار دوم خاموش: روشن" : "🔒 یک بار روشن، بار دوم خاموش: خاموش", v -> {
+                e.type = KeyMap.TOGGLE.equals(e.type) ? KeyMap.TAP : KeyMap.TOGGLE;
+                if (KeyMap.TOGGLE.equals(e.type)) e.pressRelease = false;
+                canvas.invalidate();
+                buildPopup();
+            });
+            lk.setBackground(round(locked ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
+            popup.addView(lk);
+            if (locked) {
+                popup.addView(small("مثلاً برای ویس: یک بار زدن = دکمه نگه داشته می‌ماند (ویس باز)، دوباره زدن = رها می‌شود. "
+                        + "با عوض شدن حالت بازی/موس هم باز می‌ماند", 0xFFAAAAAA));
+            }
+            if (!locked) {
             TextView pr = chip(e.pressRelease ? "🎯 نگه‌داشتن = روشن، رها = خاموش: روشن" : "🎯 نگه‌داشتن = روشن، رها = خاموش: خاموش", v -> {
                 e.pressRelease = !e.pressRelease;
                 buildPopup();
@@ -684,6 +698,7 @@ final class EditorOverlay {
             if (e.pressRelease) {
                 popup.addView(small("برای دکمه‌هایی مثل aim که در بازی با یک ضربه روشن و با ضربه بعدی خاموش می‌شوند: "
                         + "وقتی کلید را نگه داری روشن است و رها کنی خودکار خاموش می‌شود", 0xFFAAAAAA));
+            }
             }
             if (e.cursor) {
                 popup.addView(small("با زدن این کلید، دکمه بازی لمس می‌شود و موس آزاد می‌شود؛ دوباره بزنی موس قفل می‌شود (مثلاً برای لوت‌باکس)", 0xFFAAAAAA));
