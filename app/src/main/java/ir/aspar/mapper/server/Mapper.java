@@ -15,6 +15,7 @@ import java.util.Set;
  *
  * Element types (sent by the app as JSON, coordinates already in screen pixels):
  *  - tap:      {type:"tap", key, x, y}              finger is held while the key is held
+ *  - toggle:   {type:"toggle", key, x, y}           first press holds the finger down, second press lifts it
  *  - joystick: {type:"joystick", x, y, r, up, down, left, right}
  *  - look:     {type:"look", x, y, sens, lim}       mouse movement drags a finger (camera)
  *
@@ -27,7 +28,6 @@ final class Mapper {
     static final int WHEEL_DOWN = 0x1002;
 
     // finger keys (must not collide with tap element indexes, which start at 100)
-    private static final int FINGER_JOYSTICK = 1;
     private static final int FINGER_LOOK = 2;
 
     private static final class Element {
@@ -109,9 +109,8 @@ final class Mapper {
                 e.right = o.optInt("right", 32);
                 e.sens = (float) o.optDouble("sens", 1.0);
                 e.lim = (float) o.optDouble("lim", 300);
-                if ("joystick".equals(e.type)) e.finger = FINGER_JOYSTICK;
-                else if ("look".equals(e.type)) e.finger = FINGER_LOOK;
-                else e.finger = 100 + i;
+                if ("look".equals(e.type)) e.finger = FINGER_LOOK;
+                else e.finger = 100 + i; // taps, toggles and every joystick get their own finger
                 elements.add(e);
             }
         }
@@ -174,6 +173,12 @@ final class Mapper {
                 if ("tap".equals(e.type) && e.key == code) {
                     if (down) touch.down(e.finger, e.x, e.y);
                     else touch.up(e.finger);
+                } else if ("toggle".equals(e.type) && e.key == code) {
+                    // press once = finger stays down, press again = release
+                    if (down) {
+                        if (touch.isDown(e.finger)) touch.up(e.finger);
+                        else touch.down(e.finger, e.x, e.y);
+                    }
                 } else if ("joystick".equals(e.type)
                         && (code == e.up || code == e.down || code == e.left || code == e.right)) {
                     updateJoystick(e);

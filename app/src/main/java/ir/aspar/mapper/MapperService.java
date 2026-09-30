@@ -11,18 +11,16 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.content.res.Configuration;
 import android.graphics.Point;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.provider.Settings;
-import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.LinearLayout;
-import android.widget.TextView;
+import android.widget.FrameLayout;
+import android.widget.Toast;
 
 import ir.aspar.mapper.adb.Activator;
 
@@ -75,11 +73,9 @@ public class MapperService extends Service implements ServerClient.Listener {
     private ServerClient client;
     private KeyMap keyMap;
 
-    private LinearLayout bubbleRoot;
-    private TextView bubble;
-    private LinearLayout panel;
-    private TextView gameButton;
-    private TextView labelsButton;
+    private FrameLayout bubbleRoot;
+    private IconView bubble;
+    private boolean longPressed;
     private WindowManager.LayoutParams bubbleLp;
     private KeymapView labels;
     private EditorOverlay editor;
@@ -258,40 +254,24 @@ public class MapperService extends Service implements ServerClient.Listener {
         if (bubbleRoot == null) createBubble();
     }
 
-    @SuppressLint({"ClickableViewAccessibility", "SetTextI18n"})
+    @SuppressLint("ClickableViewAccessibility")
     private void createBubble() {
-        bubbleRoot = new LinearLayout(this);
-        bubbleRoot.setOrientation(LinearLayout.VERTICAL);
+        bubbleRoot = new FrameLayout(this);
+        int size = Ui.dp(this, 54);
+        bubble = new IconView(this, IconView.Kind.GAMEPAD, 0xFFFFFFFF, 0xFF757575);
+        bubbleRoot.addView(bubble, new FrameLayout.LayoutParams(size, size));
 
-        bubble = new TextView(this);
-        bubble.setText("🎮");
-        bubble.setTextSize(20);
-        bubble.setGravity(Gravity.CENTER);
-        int size = Ui.dp(this, 48);
-        bubbleRoot.addView(bubble, new LinearLayout.LayoutParams(size, size));
-
-        panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xEE202124);
-        bg.setCornerRadius(Ui.dp(this, 12));
-        panel.setBackground(bg);
-        panel.setPadding(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6));
-        panel.setVisibility(View.GONE);
-        gameButton = panelItem("", v -> client.setGameMode(!gameMode));
-        panel.addView(gameButton);
-        panel.addView(panelItem("✏️ ویرایش کلیدها", v -> openEditor()));
-        labelsButton = panelItem("", v -> {
-            Prefs.setShowLabels(this, !Prefs.showLabels(this));
-            onGameModeChanged(gameMode);
-            updateBubble();
-        });
-        panel.addView(labelsButton);
-        panel.addView(panelItem("⏻ خاموش کردن", v -> send(this, ACTION_STOP)));
-        bubbleRoot.addView(panel);
-
-        bubbleLp = Ui.wrap(Ui.dp(this, 8), Ui.dp(this, 120));
+        bubbleLp = Ui.wrap(Ui.dp(this, 8), Ui.dp(this, 90));
         wm.addView(bubbleRoot, bubbleLp);
+
+        final Runnable longPress = () -> {
+            longPressed = true;
+            if (client != null && connected) {
+                client.setGameMode(!gameMode);
+            } else {
+                Toast.makeText(this, "سرویس وصل نیست – از داخل برنامه «فعال‌سازی» را بزن", Toast.LENGTH_SHORT).show();
+            }
+        };
 
         bubble.setOnTouchListener(new View.OnTouchListener() {
             float sx, sy;
@@ -307,11 +287,16 @@ public class MapperService extends Service implements ServerClient.Listener {
                         ox = bubbleLp.x;
                         oy = bubbleLp.y;
                         moved = false;
+                        longPressed = false;
+                        main.postDelayed(longPress, 600);
                         return true;
                     case MotionEvent.ACTION_MOVE:
                         float dx = e.getRawX() - sx;
                         float dy = e.getRawY() - sy;
-                        if (Math.abs(dx) + Math.abs(dy) > Ui.dp(MapperService.this, 8)) moved = true;
+                        if (!moved && Math.abs(dx) + Math.abs(dy) > Ui.dp(MapperService.this, 8)) {
+                            moved = true;
+                            main.removeCallbacks(longPress);
+                        }
                         if (moved) {
                             bubbleLp.x = (int) (ox + dx);
                             bubbleLp.y = (int) (oy + dy);
@@ -319,9 +304,11 @@ public class MapperService extends Service implements ServerClient.Listener {
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
-                        if (!moved) {
-                            panel.setVisibility(panel.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
-                        }
+                        main.removeCallbacks(longPress);
+                        if (!moved && !longPressed) openEditor();
+                        return true;
+                    case MotionEvent.ACTION_CANCEL:
+                        main.removeCallbacks(longPress);
                         return true;
                     default:
                         return false;
@@ -331,34 +318,12 @@ public class MapperService extends Service implements ServerClient.Listener {
         updateBubble();
     }
 
-    private TextView panelItem(String text, View.OnClickListener l) {
-        TextView t = new TextView(this);
-        t.setText(text);
-        t.setTextColor(0xFFFFFFFF);
-        t.setTextSize(15);
-        t.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 12), Ui.dp(this, 10));
-        t.setOnClickListener(v -> {
-            l.onClick(v);
-            if (panel != null) panel.setVisibility(View.GONE);
-        });
-        return t;
-    }
-
     private void updateBubble() {
         if (bubble == null) return;
-        GradientDrawable d = new GradientDrawable();
-        d.setShape(GradientDrawable.OVAL);
-        int color = !connected ? 0xCC757575 : (gameMode ? 0xDD2E7D32 : 0xDD1565C0);
-        d.setColor(color);
-        d.setStroke(Ui.dp(this, 2), 0xFFFFFFFF);
-        bubble.setBackground(d);
-        bubble.setAlpha(gameMode ? 0.5f : 1f);
-        if (gameButton != null) {
-            gameButton.setText(!connected ? "⚠️ سرویس وصل نیست" : (gameMode ? "🖱 رفتن به حالت موس" : "🎮 رفتن به حالت بازی"));
-        }
-        if (labelsButton != null) {
-            labelsButton.setText(Prefs.showLabels(this) ? "👁 مخفی کردن برچسب‌ها" : "👁 نمایش برچسب‌ها");
-        }
+        // gray = helper not running, blue = normal mouse, green = game mode
+        int color = !connected ? 0xFF757575 : (gameMode ? 0xFF34C759 : 0xFF1E88E5);
+        bubble.setColors(0xFFFFFFFF, color);
+        bubble.setAlpha(gameMode ? 0.55f : 1f);
     }
 
     private void openEditor() {
@@ -368,17 +333,30 @@ public class MapperService extends Service implements ServerClient.Listener {
         }
         if (editor != null && editor.isShowing()) return;
         if (client != null && gameMode) client.setGameMode(false);
+        int bx = bubbleLp != null ? bubbleLp.x : Ui.dp(this, 8);
+        int by = bubbleLp != null ? bubbleLp.y : Ui.dp(this, 90);
         if (bubbleRoot != null) bubbleRoot.setVisibility(View.GONE);
-        editor = new EditorOverlay(this, keyMap, saved -> {
-            if (saved != null) {
-                keyMap = saved;
-                keyMap.save(this);
-                if (labels != null) labels.setKeyMap(keyMap);
-                pushConfig();
-                report("چیدمان ذخیره شد ✓");
+        editor = new EditorOverlay(this, keyMap, bx, by, Ui.dp(this, 54), new EditorOverlay.Callback() {
+            @Override
+            public void onEditorClosed(KeyMap saved) {
+                if (saved != null) {
+                    keyMap = saved;
+                    keyMap.save(MapperService.this);
+                    if (labels != null) labels.setKeyMap(keyMap);
+                    pushConfig();
+                    report("چیدمان ذخیره شد ✓");
+                    Toast.makeText(MapperService.this, "ذخیره شد ✓", Toast.LENGTH_SHORT).show();
+                }
+                if (bubbleRoot != null) bubbleRoot.setVisibility(View.VISIBLE);
+                onGameModeChanged(gameMode); // refresh labels visibility
+                editor = null;
             }
-            if (bubbleRoot != null) bubbleRoot.setVisibility(View.VISIBLE);
-            editor = null;
+
+            @Override
+            public void onStopRequested() {
+                editor = null;
+                send(MapperService.this, ACTION_STOP);
+            }
         });
         editor.show();
     }

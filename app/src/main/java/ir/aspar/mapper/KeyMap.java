@@ -16,6 +16,7 @@ public final class KeyMap {
     public static final String TAP = "tap";
     public static final String JOYSTICK = "joystick";
     public static final String LOOK = "look";
+    public static final String TOGGLE = "toggle";
 
     public static final class Element {
         public String type = TAP;
@@ -30,9 +31,12 @@ public final class KeyMap {
         public String label() {
             switch (type) {
                 case JOYSTICK:
+                    if (up == 103 && left == 105 && down == 108 && right == 106) return "↑←↓→";
                     return KeyNames.shortName(up) + KeyNames.shortName(left) + KeyNames.shortName(down) + KeyNames.shortName(right);
                 case LOOK:
-                    return "دوربین";
+                    return "🖱";
+                case TOGGLE:
+                    return KeyNames.shortName(key) + "⏺";
                 default:
                     return KeyNames.shortName(key);
             }
@@ -115,7 +119,7 @@ public final class KeyMap {
             o.put("type", e.type);
             o.put("x", e.fx * width);
             o.put("y", e.fy * height);
-            if (TAP.equals(e.type)) {
+            if (TAP.equals(e.type) || TOGGLE.equals(e.type)) {
                 o.put("key", e.key);
             } else if (JOYSTICK.equals(e.type)) {
                 o.put("r", e.size * height);
