@@ -41,7 +41,12 @@ public class MainActivity extends Activity implements MapperService.StatusListen
         scroll.addView(col);
         setContentView(scroll);
 
-        TextView title = text("Aspar Mapper", 24, 0xFFFFFFFF);
+        String version = "";
+        try {
+            version = " v" + getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception ignored) {
+        }
+        TextView title = text("Aspar Mapper" + version, 24, 0xFFFFFFFF);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         col.addView(title);
         col.addView(text("کنترل بازی با موس و کیبورد – مخصوص Oxide: Survival Island", 14, 0xFFB0BEC5));
