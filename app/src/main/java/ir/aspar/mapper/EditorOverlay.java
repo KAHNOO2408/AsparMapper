@@ -474,17 +474,6 @@ final class EditorOverlay {
             rebuildPanel();
         }));
         col.addView(cs);
-        col.addView(small(String.format(Locale.US, "انتقال سریع (Shift + کشیدن): فاصله خانه‌ها %d٪", Math.round(keyMap.slotSize * 1000)), 0xFF111111));
-        LinearLayout ss = new LinearLayout(ctx);
-        ss.addView(chip("کمتر", v -> {
-            keyMap.slotSize = Math.max(0.02f, keyMap.slotSize - 0.005f);
-            rebuildPanel();
-        }));
-        ss.addView(chip("بیشتر", v -> {
-            keyMap.slotSize = Math.min(0.2f, keyMap.slotSize + 0.005f);
-            rebuildPanel();
-        }));
-        col.addView(ss);
         col.addView(row(Prefs.showLabels(ctx) ? "برچسب کلیدها در بازی: روشن" : "برچسب کلیدها در بازی: خاموش",
                 "نمایش کم‌رنگ دکمه‌ها روی صفحه بازی", v -> {
                     toggleLabels();

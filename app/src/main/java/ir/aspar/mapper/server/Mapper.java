@@ -172,12 +172,37 @@ final class Mapper {
     private void cursorMove(int dx, int dy) {
         curX = Math.max(0, Math.min(screenW - 1, curX + dx * cursorSpeed));
         curY = Math.max(0, Math.min(screenH - 1, curY + dy * cursorSpeed));
-        if (transferring) {
-            if (Math.hypot(curX - lastTapX, curY - lastTapY) >= slotSize) doubleTapAtCursor();
-        } else if (cursorPressed) {
+        if (!transferring && cursorPressed) {
             touch.move(FINGER_CURSOR, curX, curY);
         }
         sendCursor(false);
+    }
+
+    /** Shift + left button held: double-tap under the cursor again and again, very fast. */
+    private void transferLoop() {
+        final int f = FINGER_CURSOR + 22;
+        while (true) {
+            float x;
+            float y;
+            synchronized (this) {
+                if (!transferring || !ownCursor()) break;
+                x = curX;
+                y = curY;
+            }
+            for (int i = 0; i < 2; i++) {
+                synchronized (this) {
+                    touch.down(f, x, y);
+                }
+                SystemClock.sleep(22);
+                synchronized (this) {
+                    touch.up(f);
+                }
+                SystemClock.sleep(i == 0 ? 35 : 45);
+            }
+        }
+        synchronized (this) {
+            touch.up(f);
+        }
     }
 
     private void doubleTapAtCursor() {
@@ -205,8 +230,12 @@ final class Mapper {
         synchronized (this) {
             if (down) {
                 if (code == BTN_LEFT && (held.contains(KEY_LEFTSHIFT) || held.contains(KEY_RIGHTSHIFT))) {
-                    transferring = true;
-                    doubleTapAtCursor();
+                    if (!transferring) {
+                        transferring = true;
+                        Thread t = new Thread(this::transferLoop, "transfer");
+                        t.setDaemon(true);
+                        t.start();
+                    }
                 } else if (!cursorPressed) {
                     cursorPressed = true;
                     touch.down(FINGER_CURSOR, curX, curY);
