@@ -25,9 +25,11 @@ public final class ServerClient {
         void onGameModeChanged(boolean gameMode);
 
         void onDevices(java.util.List<String> devices);
+
+        void onForeground(String pkg);
     }
 
-    public static final int EXPECTED_VERSION = 1;
+    public static final int EXPECTED_VERSION = 2;
 
     private final android.content.Context ctx;
     private final Listener listener;
@@ -148,6 +150,8 @@ public final class ServerClient {
                 }
                 int version = res.optInt("version");
                 gameMode = res.optBoolean("game");
+                String fg0 = res.optString("foreground", "");
+                if (!fg0.isEmpty()) main.post(() -> listener.onForeground(fg0));
                 out = os;
                 connected = true;
                 lastError = "";
@@ -164,6 +168,10 @@ public final class ServerClient {
                         java.util.List<String> list = new java.util.ArrayList<>();
                         for (int i = 0; i < devs.length(); i++) list.add(devs.optString(i));
                         main.post(() -> listener.onDevices(list));
+                    }
+                    if ("foreground".equals(msg.optString("event"))) {
+                        String pkg = msg.optString("value");
+                        main.post(() -> listener.onForeground(pkg));
                     }
                     if ("mode".equals(msg.optString("event"))) {
                         gameMode = msg.optBoolean("value");

@@ -23,6 +23,27 @@ final class ControlServer {
     private final Mapper mapper;
     private volatile OutputStream client;
     private volatile boolean running = true;
+    private ForegroundWatcher foreground;
+
+    void setForegroundWatcher(ForegroundWatcher f) {
+        foreground = f;
+    }
+
+    void sendEvent(String name, String value) {
+        OutputStream out = client;
+        if (out == null) return;
+        try {
+            JSONObject o = new JSONObject();
+            o.put("event", name);
+            o.put("value", value);
+            synchronized (this) {
+                out.write((o + "\n").getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+        } catch (Exception e) {
+            client = null;
+        }
+    }
 
     ControlServer(int port, String token, Mapper mapper) {
         this.port = port;
@@ -79,6 +100,7 @@ final class ControlServer {
                         res.put("ok", true);
                         res.put("version", Server.VERSION);
                         res.put("game", mapper.isGameMode());
+                        if (foreground != null && foreground.last() != null) res.put("foreground", foreground.last());
                     } else {
                         res.put("ok", false);
                         res.put("error", "unauthorized");

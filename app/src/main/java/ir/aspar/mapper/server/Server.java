@@ -13,7 +13,7 @@ import android.os.Looper;
  */
 public final class Server {
 
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     private Server() {
     }
@@ -39,6 +39,9 @@ public final class Server {
             ControlServer.DeviceManagerHolder.instance = devices;
             ControlServer control = new ControlServer(port, token, mapper);
             mapper.setControlServer(control);
+            ForegroundWatcher fg = new ForegroundWatcher(pkg -> control.sendEvent("foreground", pkg));
+            control.setForegroundWatcher(fg);
+            fg.start();
 
             devices.start();
             control.run(); // blocks until "quit"

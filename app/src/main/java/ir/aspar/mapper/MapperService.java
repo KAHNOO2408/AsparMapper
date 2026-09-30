@@ -105,7 +105,8 @@ public class MapperService extends Service implements ServerClient.Listener {
     private boolean gameMode;
     private volatile boolean activating;
     private volatile String activeGame;
-    private volatile String foreground; // null = unknown (usage access not granted)
+    private volatile String foreground; // from usage stats; null = unknown
+    private volatile String serverForeground; // from the helper (most reliable); null = unknown
     private volatile boolean watching = true;
 
     @Override
@@ -253,7 +254,9 @@ public class MapperService extends Service implements ServerClient.Listener {
             client.requestDevices();
         } else {
             serverDevices = new java.util.ArrayList<>();
+            serverForeground = null;
         }
+        refreshVisibility();
         updateBubble();
         report(c ? "سرویس " + info : "سرویس در دسترس نیست – «فعال‌سازی» را بزن\n(" + client.lastError() + ")");
     }
@@ -304,11 +307,17 @@ public class MapperService extends Service implements ServerClient.Listener {
         refreshVisibility();
     }
 
-    /** The game chosen in Aspar Mapper is on screen (or we cannot tell, then assume yes). */
+    /** The game chosen in Aspar Mapper is the app in front. Unknown = hidden. */
     private boolean inGame() {
         if (activeGame == null) return false;
-        String fg = foreground;
-        return fg == null || activeGame.equals(fg);
+        String fg = connected && serverForeground != null ? serverForeground : foreground;
+        return fg != null && activeGame.equals(fg);
+    }
+
+    @Override
+    public void onForeground(String pkg) {
+        serverForeground = pkg;
+        refreshVisibility();
     }
 
     /** Floating button and labels only appear inside the game that was started from Aspar Mapper. */
