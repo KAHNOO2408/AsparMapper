@@ -714,6 +714,23 @@ final class EditorOverlay {
             }
             }
             if (e.cursor) {
+                LinearLayout mm = new LinearLayout(ctx);
+                TextView loot = chip("📦 لوت‌باکس", v -> {
+                    e.mapMode = false;
+                    buildPopup();
+                });
+                loot.setBackground(round(!e.mapMode ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
+                TextView map = chip("🗺 نقشه", v -> {
+                    e.mapMode = true;
+                    buildPopup();
+                });
+                map.setBackground(round(e.mapMode ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
+                mm.addView(loot);
+                mm.addView(map);
+                popup.addView(mm);
+                popup.addView(small(e.mapMode
+                        ? "نقشه: چرخ موس = زوم، کلیک چپ = علامت‌گذاری، نگه‌داشتن و کشیدن = جابه‌جا کردن نقشه"
+                        : "لوت‌باکس: چرخ موس = اسکرول، Shift + کلیک چپ = انتقال سریع", 0xFFAAAAAA));
                 popup.addView(small("با زدن این کلید، دکمه بازی لمس می‌شود و موس آزاد می‌شود؛ دوباره بزنی موس قفل می‌شود (مثلاً برای لوت‌باکس)", 0xFFAAAAAA));
             }
         } else if (KeyMap.JOYSTICK.equals(e.type)) {

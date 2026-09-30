@@ -35,6 +35,7 @@ public final class KeyMap {
         public int sprintKey = 15;       // joystick: holding this key (Tab) + forward also sprints
         public float sprintDist = 2.5f;  // joystick: sprint point distance, in joystick radiuses, straight up
         public boolean cursor = false;   // key: after pressing it, switch between game mode and free mouse
+        public boolean mapMode = false;  // cursor key opens a map: mouse wheel zooms instead of scrolling
         public boolean pressRelease = false; // key: tap on press + tap on release (hold-to-aim with toggle buttons)
         public float sensY = 1.0f;       // look: vertical speed relative to horizontal
         public float adsSens = 0.5f;     // look: sensitivity while the aim key is held
@@ -84,6 +85,7 @@ public final class KeyMap {
             o.put("sprintDist", sprintDist);
             o.put("cursor", cursor);
             o.put("pressRelease", pressRelease);
+            o.put("mapMode", mapMode);
             o.put("sensY", sensY);
             o.put("adsSens", adsSens);
             o.put("adsKey", adsKey);
@@ -122,6 +124,7 @@ public final class KeyMap {
             e.sprintDist = (float) o.optDouble("sprintDist", 2.5);
             e.cursor = o.optBoolean("cursor", false);
             e.pressRelease = o.optBoolean("pressRelease", false);
+            e.mapMode = o.optBoolean("mapMode", false);
             e.sensY = (float) o.optDouble("sensY", 1.0);
             e.adsSens = (float) o.optDouble("adsSens", e.sens * 0.5);
             e.adsKey = o.optInt("adsKey", KeyNames.BTN_RIGHT);
@@ -207,6 +210,7 @@ public final class KeyMap {
             if (TAP.equals(e.type) || TOGGLE.equals(e.type)) {
                 o.put("key", e.key);
                 o.put("cursor", e.cursor);
+                o.put("mapMode", e.mapMode);
                 o.put("tapMode", e.pressRelease ? "press" : "hold");
             } else if (JOYSTICK.equals(e.type)) {
                 o.put("r", e.size * height);

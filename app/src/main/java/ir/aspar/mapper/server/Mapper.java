@@ -51,6 +51,7 @@ final class Mapper {
     private float cursorSpeed = 1.5f;
     private float slotSize = 70f;
     private final Set<Integer> held = new HashSet<>(); // every key currently held, in any mode
+    private volatile boolean mapView;   // free mouse was opened by a map key: wheel zooms
 
     private static final class Element {
         String type;
@@ -74,6 +75,7 @@ final class Mapper {
         boolean swallowUp;      // forward key pressed only to stop sprinting: ignore until released
         long lastUpRelease;
         String tapMode = "hold";
+        boolean mapMode;        // cursor key for a map: wheel = pinch zoom
         float sensY = 1f;       // look: vertical speed relative to horizontal
         float adsSens;          // look: sensitivity while adsKey is held (aiming)
         int adsKey = -1;
@@ -255,6 +257,38 @@ final class Mapper {
         return true;
     }
 
+    /** Mouse wheel on a map: two-finger pinch around the cursor (up = zoom in). */
+    private void cursorZoom(int value) {
+        final float x = curX;
+        final float y = curY;
+        final boolean in = value > 0;
+        final float near = Math.min(screenH * 0.06f, 60f);
+        final float far = near * 2.2f;
+        taps.execute(() -> {
+            int f1 = FINGER_CURSOR + 23;
+            int f2 = FINGER_CURSOR + 24;
+            float from = in ? near : far;
+            float to = in ? far : near;
+            synchronized (this) {
+                touch.down(f1, x - from, y);
+                touch.down(f2, x + from, y);
+            }
+            for (int i = 1; i <= 6; i++) {
+                SystemClock.sleep(10);
+                float d = from + (to - from) * i / 6f;
+                synchronized (this) {
+                    touch.move(f1, x - d, y);
+                    touch.move(f2, x + d, y);
+                }
+            }
+            SystemClock.sleep(15);
+            synchronized (this) {
+                touch.up(f2);
+                touch.up(f1);
+            }
+        });
+    }
+
     /** Mouse wheel with our own cursor: swipe the list under the cursor. */
     private void cursorScroll(int value) {
         final float x = curX;
@@ -313,6 +347,7 @@ final class Mapper {
                 e.sprintKey = o.optInt("sprintKey", -1);
                 e.sprintR = (float) o.optDouble("sprintR", e.r * 2.5);
                 e.tapMode = o.optString("tapMode", "hold");
+                e.mapMode = o.optBoolean("mapMode", false);
                 e.sensY = (float) o.optDouble("sensY", 1.0);
                 e.adsSens = (float) o.optDouble("adsSens", e.sens);
                 e.adsKey = o.optInt("adsKey", -1);
@@ -347,6 +382,7 @@ final class Mapper {
             cursorPressed = false;
             transferring = false;
             gameMode = on;
+            if (on) mapView = false;
             // locked buttons (e.g. voice) stay pressed across mode changes
             Set<Integer> keep = new HashSet<>();
             for (Element e : elements) if ("toggle".equals(e.type)) keep.add(e.finger);
@@ -390,7 +426,10 @@ final class Mapper {
                 }
             } else if (code == DeviceManager.REL_WHEEL && value != 0) {
                 if (gameMode) wheel(value > 0 ? WHEEL_UP : WHEEL_DOWN);
-                else if (ownCursor()) cursorScroll(value);
+                else if (ownCursor()) {
+                    if (mapView) cursorZoom(value);
+                    else cursorScroll(value);
+                }
             }
         } else if (type == DeviceManager.EV_SYN && code == DeviceManager.SYN_REPORT) {
             flushMouse();
@@ -435,7 +474,9 @@ final class Mapper {
                 synchronized (this) {
                     touch.up(cursorKey.finger);
                 }
-                setGameMode(!gameMode, "loot");
+                boolean toMouse = gameMode;
+                mapView = toMouse && cursorKey.mapMode;
+                setGameMode(!gameMode, mapView ? "map" : "loot");
             }
             return;
         }
