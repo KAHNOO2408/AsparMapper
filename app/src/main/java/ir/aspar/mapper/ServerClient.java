@@ -29,6 +29,8 @@ public final class ServerClient {
         void onForeground(String pkg);
 
         void onHideToggle();
+
+        void onNextLayout();
     }
 
     public static final int EXPECTED_VERSION = 2;
@@ -170,6 +172,9 @@ public final class ServerClient {
                         java.util.List<String> list = new java.util.ArrayList<>();
                         for (int i = 0; i < devs.length(); i++) list.add(devs.optString(i));
                         main.post(() -> listener.onDevices(list));
+                    }
+                    if ("nextLayout".equals(msg.optString("event"))) {
+                        main.post(listener::onNextLayout);
                     }
                     if ("hideToggle".equals(msg.optString("event"))) {
                         main.post(listener::onHideToggle);

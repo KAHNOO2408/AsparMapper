@@ -38,6 +38,7 @@ public class MapperService extends Service implements ServerClient.Listener {
     public static final String ACTION_DIAG = "ir.aspar.mapper.DIAG";
     public static final String ACTION_SET_GAME = "ir.aspar.mapper.SET_GAME";
     public static final String ACTION_HIDE_TOGGLE = "ir.aspar.mapper.HIDE_TOGGLE";
+    public static final String ACTION_RELOAD = "ir.aspar.mapper.RELOAD";
     public static final String EXTRA_PORT = "port";
     public static final String EXTRA_PKG = "pkg";
 
@@ -95,6 +96,7 @@ public class MapperService extends Service implements ServerClient.Listener {
     private WindowManager wm;
     private ServerClient client;
     private KeyMap keyMap;
+    private Layouts layouts;
 
     private FrameLayout bubbleRoot;
     private IconView bubble;
@@ -121,7 +123,8 @@ public class MapperService extends Service implements ServerClient.Listener {
         running = this;
         wm = getSystemService(WindowManager.class);
         activeGame = Prefs.get(this).getString("active_game", null);
-        keyMap = KeyMap.load(this, activeGame);
+        layouts = Layouts.load(this, activeGame);
+        keyMap = layouts.active();
         goForeground();
         client = new ServerClient(this, this);
         pushConfig();
@@ -144,12 +147,19 @@ public class MapperService extends Service implements ServerClient.Listener {
                 String pkg = intent.getStringExtra(EXTRA_PKG);
                 activeGame = pkg;
                 Prefs.get(this).edit().putString("active_game", pkg).apply();
-                keyMap = KeyMap.load(this, pkg);
+                layouts = Layouts.load(this, pkg);
+                keyMap = layouts.active();
                 if (labels != null) labels.setKeyMap(keyMap);
                 pushConfig();
                 showOverlays();
                 break;
             }
+            case ACTION_RELOAD:
+                layouts = Layouts.load(this, activeGame);
+                keyMap = layouts.active();
+                if (labels != null) labels.setKeyMap(keyMap);
+                pushConfig();
+                break;
             case ACTION_HIDE_TOGGLE:
                 onHideToggle();
                 break;
@@ -319,6 +329,19 @@ public class MapperService extends Service implements ServerClient.Listener {
     }
 
     @Override
+    public void onNextLayout() {
+        if (layouts == null || editor != null) return;
+        layouts.next();
+        layouts.save(this, activeGame);
+        keyMap = layouts.active();
+        if (labels != null) labels.setKeyMap(keyMap);
+        pushConfig();
+        if (!Prefs.bubbleHidden(this)) {
+            Toast.makeText(this, layouts.activeName(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
     public void onHideToggle() {
         boolean hidden = !Prefs.bubbleHidden(this);
         Prefs.setBubbleHidden(this, hidden);
@@ -470,12 +493,34 @@ public class MapperService extends Service implements ServerClient.Listener {
         int bx = bubbleLp != null ? bubbleLp.x : Ui.dp(this, 8);
         int by = bubbleLp != null ? bubbleLp.y : Ui.dp(this, 90);
         if (bubbleRoot != null) bubbleRoot.setVisibility(View.GONE);
-        editor = new EditorOverlay(this, keyMap, bx, by, Ui.dp(this, 54), new EditorOverlay.Callback() {
+        editor = new EditorOverlay(this, keyMap, layouts.names, layouts.current, bx, by, Ui.dp(this, 54), new EditorOverlay.Callback() {
+            @Override
+            public void onLayoutAction(KeyMap edits, String action) {
+                // keep the edits made so far, then switch / add / delete and reopen the editor
+                layouts.setActive(edits);
+                if (action.startsWith("switch:")) {
+                    layouts.current = Integer.parseInt(action.substring(7));
+                } else if ("new".equals(action)) {
+                    layouts.add(layouts.nextName(), new KeyMap());
+                } else if ("copy".equals(action)) {
+                    layouts.add(layouts.nextName(), edits.copy());
+                } else if ("delete".equals(action)) {
+                    layouts.removeActive();
+                }
+                layouts.save(MapperService.this, activeGame);
+                keyMap = layouts.active();
+                if (labels != null) labels.setKeyMap(keyMap);
+                pushConfig();
+                editor = null;
+                main.post(MapperService.this::openEditor);
+            }
+
             @Override
             public void onEditorClosed(KeyMap saved) {
                 if (saved != null) {
-                    keyMap = saved;
-                    keyMap.save(MapperService.this, activeGame);
+                    layouts.setActive(saved);
+                    layouts.save(MapperService.this, activeGame);
+                    keyMap = layouts.active();
                     if (labels != null) labels.setKeyMap(keyMap);
                     pushConfig();
                     report("چیدمان ذخیره شد ✓");

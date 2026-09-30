@@ -17,6 +17,8 @@ public final class KeyMap {
     public static final String JOYSTICK = "joystick";
     public static final String LOOK = "look";
     public static final String TOGGLE = "toggle";
+    public static final String MACRO = "macro";
+    public static final String WHEEL = "wheel";
 
     public static final class Element {
         public String type = TAP;
@@ -32,6 +34,12 @@ public final class KeyMap {
         public int sprintKey = 15;       // joystick: holding this key (Tab) + forward also sprints
         public float sprintDist = 2.5f;  // joystick: sprint point distance, in joystick radiuses, straight up
         public boolean cursor = false;   // key: after pressing it, switch between game mode and free mouse
+        public boolean pressRelease = false; // key: tap on press + tap on release (hold-to-aim with toggle buttons)
+        public float sensY = 1.0f;       // look: vertical speed relative to horizontal
+        public float adsSens = 0.5f;     // look: sensitivity while the aim key is held
+        public int adsKey = KeyNames.BTN_RIGHT;
+        public final List<float[]> steps = new ArrayList<>(); // macro/wheel: points as screen fractions
+        public int delay = 120;          // macro: ms between steps
 
         public String label() {
             switch (type) {
@@ -42,6 +50,10 @@ public final class KeyMap {
                     return "🖱";
                 case TOGGLE:
                     return KeyNames.shortName(key) + "⏺" + (cursor ? "🖱" : "");
+                case MACRO:
+                    return KeyNames.shortName(key) + "⚡";
+                case WHEEL:
+                    return "⇅";
                 default:
                     return KeyNames.shortName(key) + (cursor ? "🖱" : "");
             }
@@ -66,6 +78,19 @@ public final class KeyMap {
             o.put("sprintKeyV2", true);
             o.put("sprintDist", sprintDist);
             o.put("cursor", cursor);
+            o.put("pressRelease", pressRelease);
+            o.put("sensY", sensY);
+            o.put("adsSens", adsSens);
+            o.put("adsKey", adsKey);
+            o.put("delay", delay);
+            JSONArray st = new JSONArray();
+            for (float[] p : steps) {
+                JSONArray pt = new JSONArray();
+                pt.put((double) p[0]);
+                pt.put((double) p[1]);
+                st.put(pt);
+            }
+            o.put("steps", st);
             return o;
         }
 
@@ -88,19 +113,37 @@ public final class KeyMap {
             e.sprintKey = o.optBoolean("sprintKeyV2", false) ? o.optInt("sprintKey", 15) : 15;
             e.sprintDist = (float) o.optDouble("sprintDist", 2.5);
             e.cursor = o.optBoolean("cursor", false);
+            e.pressRelease = o.optBoolean("pressRelease", false);
+            e.sensY = (float) o.optDouble("sensY", 1.0);
+            e.adsSens = (float) o.optDouble("adsSens", e.sens * 0.5);
+            e.adsKey = o.optInt("adsKey", KeyNames.BTN_RIGHT);
+            e.delay = o.optInt("delay", 120);
+            JSONArray st = o.optJSONArray("steps");
+            if (st != null) {
+                for (int i = 0; i < st.length(); i++) {
+                    JSONArray pt = st.optJSONArray(i);
+                    if (pt != null) e.steps.add(new float[]{(float) pt.optDouble(0), (float) pt.optDouble(1)});
+                }
+            }
             return e;
         }
     }
 
     public int toggleKey = KeyNames.KEY_GRAVE;
     public int hideKey = -1; // shows/hides the floating button (for streaming)
+    public int layoutKey = -1; // switches to the next layout of this game
     public final List<Element> elements = new ArrayList<>();
+
+    public KeyMap copy() {
+        return fromJsonString(toJsonString());
+    }
 
     public String toJsonString() {
         try {
             JSONObject root = new JSONObject();
             root.put("toggleKey", toggleKey);
             root.put("hideKey", hideKey);
+            root.put("layoutKey", layoutKey);
             JSONArray arr = new JSONArray();
             for (Element e : elements) arr.put(e.toJson());
             root.put("elements", arr);
@@ -116,6 +159,7 @@ public final class KeyMap {
             JSONObject root = new JSONObject(s);
             km.toggleKey = root.optInt("toggleKey", KeyNames.KEY_GRAVE);
             km.hideKey = root.optInt("hideKey", -1);
+            km.layoutKey = root.optInt("layoutKey", -1);
             JSONArray arr = root.optJSONArray("elements");
             if (arr != null) {
                 for (int i = 0; i < arr.length(); i++) km.elements.add(Element.fromJson(arr.getJSONObject(i)));
@@ -132,6 +176,7 @@ public final class KeyMap {
         cfg.put("cmd", "config");
         cfg.put("toggleKey", toggleKey);
         cfg.put("hideKey", hideKey);
+        cfg.put("layoutKey", layoutKey);
         cfg.put("w", width);
         cfg.put("h", height);
         JSONArray arr = new JSONArray();
@@ -143,6 +188,7 @@ public final class KeyMap {
             if (TAP.equals(e.type) || TOGGLE.equals(e.type)) {
                 o.put("key", e.key);
                 o.put("cursor", e.cursor);
+                o.put("tapMode", e.pressRelease ? "press" : "hold");
             } else if (JOYSTICK.equals(e.type)) {
                 o.put("r", e.size * height);
                 o.put("up", e.up);
@@ -154,7 +200,21 @@ public final class KeyMap {
                 o.put("sprintR", e.sprintDist * e.size * height);
             } else if (LOOK.equals(e.type)) {
                 o.put("sens", e.sens);
+                o.put("sensY", e.sensY);
+                o.put("adsSens", e.adsSens);
+                o.put("adsKey", e.adsKey);
                 o.put("lim", e.size * height);
+            } else if (MACRO.equals(e.type) || WHEEL.equals(e.type)) {
+                o.put("key", e.key);
+                o.put("delay", e.delay);
+                JSONArray st = new JSONArray();
+                for (float[] p : e.steps) {
+                    JSONArray pt = new JSONArray();
+                    pt.put((double) (p[0] * width));
+                    pt.put((double) (p[1] * height));
+                    st.put(pt);
+                }
+                o.put("steps", st);
             }
             arr.put(o);
         }

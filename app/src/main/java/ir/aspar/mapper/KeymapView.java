@@ -102,6 +102,17 @@ class KeymapView extends View {
             canvas.drawCircle(x, y, kr, fill);
             stroke.setColor(accent);
             canvas.drawCircle(x, y, kr, stroke);
+            if (sel && !e.steps.isEmpty()) {
+                for (int k = 0; k < e.steps.size(); k++) {
+                    float px = e.steps.get(k)[0] * s.x - loc[0];
+                    float py = e.steps.get(k)[1] * s.y - loc[1];
+                    fill.setColor(0xCCAB47BC);
+                    canvas.drawCircle(px, py, keyRadius * 0.6f, fill);
+                    text.setTextSize(Ui.dp(getContext(), 11));
+                    text.setColor(0xFFFFFFFF);
+                    canvas.drawText(String.valueOf(k + 1), px, py + Ui.dp(getContext(), 4), text);
+                }
+            }
             String label = e.label();
             float size = (label.length() > 4 ? Ui.dp(getContext(), 9) : Ui.dp(getContext(), 12)) * Math.max(0.7f, Math.min(1.8f, e.scale));
             text.setTextSize(size);

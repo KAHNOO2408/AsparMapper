@@ -33,9 +33,12 @@ final class EditorOverlay {
         void onEditorClosed(KeyMap saved); // saved == null when cancelled
 
         void onStopRequested();
+
+        /** "switch:N", "new", "copy" or "delete"; the editor is closed, current edits are passed along. */
+        void onLayoutAction(KeyMap edits, String action);
     }
 
-    private enum Wait { NONE, KEY, TOGGLE, HIDE, SPRINT, DIR_UP, DIR_LEFT, DIR_DOWN, DIR_RIGHT }
+    private enum Wait { NONE, KEY, TOGGLE, HIDE, SPRINT, ADS, LAYOUT, RECORD, DIR_UP, DIR_LEFT, DIR_DOWN, DIR_RIGHT }
 
     private enum Panel { NONE, ADD, LAYERS, SETTINGS }
 
@@ -67,7 +70,14 @@ final class EditorOverlay {
     private int addPage = 0;
     private boolean resetArmed;
 
-    EditorOverlay(Context ctx, KeyMap original, int bubbleX, int bubbleY, int bubbleSize, Callback callback) {
+    private final java.util.List<String> layoutNames;
+    private final int currentLayout;
+    private boolean deleteArmed;
+
+    EditorOverlay(Context ctx, KeyMap original, java.util.List<String> layoutNames, int currentLayout,
+                  int bubbleX, int bubbleY, int bubbleSize, Callback callback) {
+        this.layoutNames = new java.util.ArrayList<>(layoutNames);
+        this.currentLayout = currentLayout;
         this.ctx = ctx;
         this.callback = callback;
         this.wm = ctx.getSystemService(WindowManager.class);
@@ -120,6 +130,9 @@ final class EditorOverlay {
         hint.setBackground(round(0xE6000000, dp(18)));
         hint.setPadding(dp(16), dp(8), dp(16), dp(8));
         hint.setVisibility(View.GONE);
+        hint.setOnClickListener(v -> {
+            if (wait == Wait.RECORD) finishRecording();
+        });
         root.addView(hint, new FrameLayout.LayoutParams(-2, -2));
 
         View.OnLayoutChangeListener relayoutOnChange = (v, l, t, r, b, ol, ot, or, ob) -> {
@@ -330,9 +343,13 @@ final class EditorOverlay {
             row.addView(space(dp(36)));
             row.addView(item(IconView.Kind.WASD, LIGHT_ITEM, "جوی‌استیک دلخواه", v -> addJoystick(17, 30, 31, 32, true)));
             page.addView(row);
-            TextView note = small("نگه‌داشتن: یک بار زدن = انگشت روی صفحه می‌ماند، بار دوم = برداشته می‌شود", 0xFF555555);
-            note.setPadding(dp(4), dp(10), dp(4), 0);
-            page.addView(note);
+            LinearLayout row2b = new LinearLayout(ctx);
+            row2b.setGravity(Gravity.CENTER);
+            row2b.setPadding(0, dp(10), 0, 0);
+            row2b.addView(item(IconView.Kind.MACRO, DARK, "ماکرو", v -> addSteps(KeyMap.MACRO)));
+            row2b.addView(space(dp(36)));
+            row2b.addView(item(IconView.Kind.WHEEL, DARK, "چرخ موس", v -> addSteps(KeyMap.WHEEL)));
+            page.addView(row2b);
         }
         col.addView(page, new LinearLayout.LayoutParams(-1, -2));
 
@@ -387,6 +404,37 @@ final class EditorOverlay {
 
     private View buildLayersPanel() {
         LinearLayout col = cardColumn("چیدمان‌ها");
+        for (int i = 0; i < layoutNames.size(); i++) {
+            final int idx = i;
+            boolean cur = i == currentLayout;
+            col.addView(row(layoutNames.get(i) + (cur ? "  ✓" : ""), cur ? "چیدمان فعلی" : "بزن تا فعال شود", v -> {
+                if (idx == currentLayout) return;
+                dismiss();
+                callback.onLayoutAction(keyMap, "switch:" + idx);
+            }));
+        }
+        col.addView(row("+ چیدمان جدید (خالی)", "مثلاً یکی برای جنگ و یکی برای ساخت‌وساز", v -> {
+            dismiss();
+            callback.onLayoutAction(keyMap, "new");
+        }));
+        col.addView(row("+ کپی از همین چیدمان", "یک نسخه از چیدمان فعلی برای تغییر دادن", v -> {
+            dismiss();
+            callback.onLayoutAction(keyMap, "copy");
+        }));
+        col.addView(row("کلید جابه‌جایی چیدمان: " + (keyMap.layoutKey > 0 ? KeyNames.name(keyMap.layoutKey) : "ندارد"),
+                "داخل بازی با این کلید به چیدمان بعدی می‌روی", v -> {
+                    closePanel();
+                    startWait(Wait.LAYOUT);
+                }));
+        col.addView(row(deleteArmed ? "برای حذف دوباره بزن" : "حذف این چیدمان", "چیدمان فعلی پاک می‌شود", v -> {
+            if (!deleteArmed) {
+                deleteArmed = true;
+                rebuildPanel();
+                return;
+            }
+            dismiss();
+            callback.onLayoutAction(keyMap, "delete");
+        }));
         col.addView(row("چیدمان پیش‌فرض Oxide", "جای دکمه‌ها حدسی است؛ بعد جابه‌جا کن", v -> {
             KeyMap def = KeyMap.oxideDefault();
             keyMap.elements.clear();
@@ -400,7 +448,7 @@ final class EditorOverlay {
             select(null);
             closePanel();
         }));
-        return col;
+        return scrollable(col);
     }
 
     private View buildSettingsPanel() {
@@ -425,7 +473,21 @@ final class EditorOverlay {
             dismiss();
             callback.onStopRequested();
         }));
-        return col;
+        return scrollable(col);
+    }
+
+    /** Keeps tall panels inside the screen (landscape phones are short). */
+    private View scrollable(View content) {
+        android.widget.ScrollView sv = new android.widget.ScrollView(ctx) {
+            @Override
+            protected void onMeasure(int w, int h) {
+                Rect safe = safeArea();
+                int max = Math.max(dp(160), safe.height() - dp(90));
+                super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(max, View.MeasureSpec.AT_MOST));
+            }
+        };
+        sv.addView(content);
+        return sv;
     }
 
     private void rebuildPanel() {
@@ -443,6 +505,35 @@ final class EditorOverlay {
         e.fx = 0.5f + shift;
         e.fy = 0.45f + shift;
         return e;
+    }
+
+    private void addSteps(String type) {
+        KeyMap.Element e = newElementAtCenter(type);
+        keyMap.elements.add(e);
+        closePanel();
+        canvas.selected = e;
+        canvas.invalidate();
+        startRecording();
+    }
+
+    private void startRecording() {
+        hidePopup();
+        wait = Wait.RECORD;
+        updateRecordHint();
+    }
+
+    private void updateRecordHint() {
+        KeyMap.Element e = canvas.selected;
+        int n = e == null ? 0 : e.steps.size();
+        String what = e != null && KeyMap.WHEEL.equals(e.type) ? "خانه‌های پایین صفحه (۱، ۲، ۳…)" : "دکمه‌ها";
+        showHint("به ترتیب روی " + what + " بزن • " + n + " مرحله ثبت شد • برای پایان همین‌جا بزن ✓", 0);
+    }
+
+    private void finishRecording() {
+        wait = Wait.NONE;
+        hint.setVisibility(View.GONE);
+        KeyMap.Element e = canvas.selected;
+        if (e != null) select(e);
     }
 
     private void addLook() {
@@ -497,7 +588,7 @@ final class EditorOverlay {
             hidePopup();
             return;
         }
-        if (KeyMap.TAP.equals(e.type) || KeyMap.TOGGLE.equals(e.type)) wait = Wait.KEY;
+        if (KeyMap.TAP.equals(e.type) || KeyMap.TOGGLE.equals(e.type) || KeyMap.MACRO.equals(e.type)) wait = Wait.KEY;
         buildPopup();
     }
 
@@ -557,6 +648,16 @@ final class EditorOverlay {
             });
             cur.setBackground(round(e.cursor ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
             popup.addView(cur);
+            TextView pr = chip(e.pressRelease ? "🎯 نگه‌داشتن = روشن، رها = خاموش: روشن" : "🎯 نگه‌داشتن = روشن، رها = خاموش: خاموش", v -> {
+                e.pressRelease = !e.pressRelease;
+                buildPopup();
+            });
+            pr.setBackground(round(e.pressRelease ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
+            popup.addView(pr);
+            if (e.pressRelease) {
+                popup.addView(small("برای دکمه‌هایی مثل aim که در بازی با یک ضربه روشن و با ضربه بعدی خاموش می‌شوند: "
+                        + "وقتی کلید را نگه داری روشن است و رها کنی خودکار خاموش می‌شود", 0xFFAAAAAA));
+            }
             if (e.cursor) {
                 popup.addView(small("با زدن این کلید، دکمه بازی لمس می‌شود و موس آزاد می‌شود؛ دوباره بزنی موس قفل می‌شود (مثلاً برای لوت‌باکس)", 0xFFAAAAAA));
             }
@@ -592,10 +693,69 @@ final class EditorOverlay {
             r1.addView(chip("حساسیت −", v -> sens(e, -0.1f)));
             r1.addView(chip("حساسیت +", v -> sens(e, 0.1f)));
             popup.addView(r1);
+            popup.addView(small(String.format(Locale.US, "سرعت عمودی نسبت به افقی: %.1f×", e.sensY), 0xFFFFFFFF));
+            LinearLayout ry = new LinearLayout(ctx);
+            ry.addView(chip("عمودی −", v -> {
+                e.sensY = Math.max(0.2f, Math.round((e.sensY - 0.1f) * 10f) / 10f);
+                buildPopup();
+            }));
+            ry.addView(chip("عمودی +", v -> {
+                e.sensY = Math.min(3f, Math.round((e.sensY + 0.1f) * 10f) / 10f);
+                buildPopup();
+            }));
+            popup.addView(ry);
+            popup.addView(small(String.format(Locale.US, "حساسیت هنگام نشانه‌گیری (نگه‌داشتن %s): %.1f",
+                    KeyNames.name(e.adsKey), e.adsSens), 0xFFFFFFFF));
+            LinearLayout ra = new LinearLayout(ctx);
+            ra.addView(chip("نشانه‌گیری −", v -> {
+                e.adsSens = Math.max(0.1f, Math.round((e.adsSens - 0.1f) * 10f) / 10f);
+                buildPopup();
+            }));
+            ra.addView(chip("نشانه‌گیری +", v -> {
+                e.adsSens = Math.min(5f, Math.round((e.adsSens + 0.1f) * 10f) / 10f);
+                buildPopup();
+            }));
+            popup.addView(ra);
+            LinearLayout rk = new LinearLayout(ctx);
+            rk.addView(chip("کلید نشانه‌گیری: کلیک راست", v -> {
+                e.adsKey = KeyNames.BTN_RIGHT;
+                buildPopup();
+            }));
+            rk.addView(chip("کلید دیگر…", v -> startWait(Wait.ADS)));
+            popup.addView(rk);
             LinearLayout r2 = new LinearLayout(ctx);
             r2.addView(chip("محدوده −", v -> resize(e, -0.02f)));
             r2.addView(chip("محدوده +", v -> resize(e, 0.02f)));
             popup.addView(r2);
+        } else if (KeyMap.MACRO.equals(e.type) || KeyMap.WHEEL.equals(e.type)) {
+            boolean macro = KeyMap.MACRO.equals(e.type);
+            if (macro) {
+                popup.addView(small("کلید: " + KeyNames.name(e.key) + " (برای تغییر یک کلید بزن)", 0xFFFFFFFF));
+            } else {
+                popup.addView(small("چرخ موس به پایین = خانه بعدی، به بالا = خانه قبلی", 0xFFFFFFFF));
+            }
+            popup.addView(small(e.steps.size() + (macro ? " مرحله ثبت شده" : " خانه ثبت شده"), 0xFFAAAAAA));
+            LinearLayout rr = new LinearLayout(ctx);
+            rr.addView(chip("⏺ ضبط دوباره", v -> {
+                e.steps.clear();
+                canvas.invalidate();
+                startRecording();
+            }));
+            rr.addView(chip("+ افزودن مرحله", v -> startRecording()));
+            popup.addView(rr);
+            if (macro) {
+                popup.addView(small("فاصله بین مراحل: " + e.delay + " میلی‌ثانیه", 0xFFFFFFFF));
+                LinearLayout rd = new LinearLayout(ctx);
+                rd.addView(chip("سریع‌تر", v -> {
+                    e.delay = Math.max(60, e.delay - 40);
+                    buildPopup();
+                }));
+                rd.addView(chip("آهسته‌تر", v -> {
+                    e.delay = Math.min(2000, e.delay + 40);
+                    buildPopup();
+                }));
+                popup.addView(rd);
+            }
         }
         popup.setVisibility(View.VISIBLE);
         relayout();
@@ -609,6 +769,10 @@ final class EditorOverlay {
                 return "موس (دوربین)";
             case KeyMap.TOGGLE:
                 return "نگه‌داشتن";
+            case KeyMap.MACRO:
+                return "ماکرو";
+            case KeyMap.WHEEL:
+                return "چرخ موس (خانه‌ها)";
             default:
                 return "کلید";
         }
@@ -658,6 +822,12 @@ final class EditorOverlay {
             case SPRINT:
                 showHint("کلیدی را بزن که همراه جلو، دویدن سریع بدهد", 0);
                 break;
+            case ADS:
+                showHint("کلید نشانه‌گیری را بزن", 0);
+                break;
+            case LAYOUT:
+                showHint("کلید جابه‌جایی چیدمان را بزن (مثلاً F1 یا Caps)", 0);
+                break;
             case DIR_UP:
                 showHint("کلید «جلو» را بزن", 0);
                 break;
@@ -682,6 +852,22 @@ final class EditorOverlay {
         if (code <= 0) return true; // not from a physical keyboard (e.g. mouse right-click)
         KeyMap.Element e = canvas.selected;
         switch (wait) {
+            case RECORD:
+                return true;
+            case ADS:
+                if (e != null) e.adsKey = code;
+                wait = Wait.NONE;
+                showHint("کلید نشانه‌گیری: " + KeyNames.name(code), 2000);
+                break;
+            case LAYOUT:
+                if (code == keyMap.toggleKey) {
+                    showHint("این کلید برای تغییر حالت است؛ یکی دیگر بزن", 2500);
+                    return true;
+                }
+                keyMap.layoutKey = code;
+                wait = Wait.NONE;
+                showHint("کلید جابه‌جایی چیدمان: " + KeyNames.name(code), 2000);
+                return true;
             case TOGGLE:
                 keyMap.toggleKey = code;
                 wait = Wait.NONE;
@@ -888,6 +1074,14 @@ final class EditorOverlay {
         @SuppressLint("ClickableViewAccessibility")
         @Override
         public boolean onTouchEvent(MotionEvent ev) {
+            if (wait == Wait.RECORD) {
+                if (ev.getActionMasked() == MotionEvent.ACTION_UP && selected != null) {
+                    selected.steps.add(new float[]{clamp(toFractionX(ev.getX()), 0f, 1f), clamp(toFractionY(ev.getY()), 0f, 1f)});
+                    invalidate();
+                    updateRecordHint();
+                }
+                return true;
+            }
             switch (ev.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     draggingSprint = hitSprint(ev.getX(), ev.getY());

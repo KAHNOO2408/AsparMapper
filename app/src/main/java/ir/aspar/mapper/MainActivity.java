@@ -26,6 +26,8 @@ public class MainActivity extends Activity implements MapperService.StatusListen
     private TextView overlayState;
     private EditText pairPort;
     private EditText connectPort;
+    private static final int REQ_EXPORT = 41;
+    private static final int REQ_IMPORT = 42;
     private LinearLayout devicesBox;
     private LinearLayout gamesBox;
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -100,6 +102,19 @@ public class MainActivity extends Activity implements MapperService.StatusListen
         cg.addView(gamesBox);
         cg.addView(btn("+ افزودن بازی یا برنامه", v -> pickApp()));
 
+        // backup
+        LinearLayout cb = card(col, "💾 پشتیبان‌گیری از چیدمان‌ها");
+        cb.addView(text("همه بازی‌ها و چیدمان‌هایشان در یک فایل ذخیره می‌شوند؛ بعد از نصب دوباره یا گوشی جدید آن را برگردان.", 13, 0xFFB0BEC5));
+        cb.addView(btn("ذخیره در فایل", v -> {
+            Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("application/json").putExtra(Intent.EXTRA_TITLE, "AsparMapper-backup.json");
+            startActivityForResult(i, REQ_EXPORT);
+        }));
+        cb.addView(btn("بازگردانی از فایل", v -> {
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+            startActivityForResult(i, REQ_IMPORT);
+        }));
+
         // 1. permissions
         LinearLayout c1 = card(col, "۱. دسترسی‌ها");
         overlayState = text("", 14, 0xFFFFFFFF);
@@ -172,6 +187,35 @@ public class MainActivity extends Activity implements MapperService.StatusListen
         getSystemService(android.hardware.input.InputManager.class).unregisterInputDeviceListener(deviceListener);
         ui.removeCallbacks(devicePoll);
         super.onPause();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        try {
+            if (requestCode == REQ_EXPORT) {
+                String json = Layouts.exportAll(this);
+                try (java.io.OutputStream os = getContentResolver().openOutputStream(uri, "wt")) {
+                    os.write(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+                Toast.makeText(this, "پشتیبان ذخیره شد ✓", Toast.LENGTH_SHORT).show();
+            } else if (requestCode == REQ_IMPORT) {
+                StringBuilder sb = new StringBuilder();
+                try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(
+                        getContentResolver().openInputStream(uri), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = br.readLine()) != null) sb.append(line).append('\n');
+                }
+                int n = Layouts.importAll(this, sb.toString());
+                MapperService.send(this, MapperService.ACTION_RELOAD);
+                refreshGames();
+                Toast.makeText(this, n + " بازی بازگردانی شد ✓", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            Toast.makeText(this, "خطا: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     // ------------------------------------------------------------------ devices

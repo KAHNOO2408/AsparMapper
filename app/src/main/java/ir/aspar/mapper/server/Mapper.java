@@ -17,7 +17,10 @@ import java.util.Set;
  *  - tap:      {type:"tap", key, x, y}              finger is held while the key is held
  *  - toggle:   {type:"toggle", key, x, y}           first press holds the finger down, second press lifts it
  *  - joystick: {type:"joystick", x, y, r, up, down, left, right}
- *  - look:     {type:"look", x, y, sens, lim}       mouse movement drags a finger (camera)
+ *  - look:     {type:"look", x, y, sens, sensY, adsSens, adsKey, lim}  mouse drags a finger (camera)
+ *  - macro:    {type:"macro", key, steps:[[x,y]..], delay}  one key = several taps in a row
+ *  - wheel:    {type:"wheel", steps:[[x,y]..]}      mouse wheel steps through these points (hotbar)
+ *  tap "tapMode":"press" = tap on press and tap again on release (hold-to-aim for toggle buttons)
  *
  * Mouse buttons arrive as normal key codes (BTN_LEFT=272, BTN_RIGHT=273, BTN_MIDDLE=274).
  * The mouse wheel is exposed as virtual keys WHEEL_UP / WHEEL_DOWN (short taps).
@@ -51,7 +54,17 @@ final class Mapper {
         boolean sprintLocked;   // double-tapped forward: finger stays on the sprint point
         boolean swallowUp;      // forward key pressed only to stop sprinting: ignore until released
         long lastUpRelease;
+        String tapMode = "hold";
+        float sensY = 1f;       // look: vertical speed relative to horizontal
+        float adsSens;          // look: sensitivity while adsKey is held (aiming)
+        int adsKey = -1;
+        float[][] steps = new float[0][];
+        long delay = 120;
+        int cycle = -1;         // wheel: current slot
     }
+
+    private final java.util.concurrent.ExecutorService taps = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private int layoutKey = -1; // tells the app to switch to the next layout
 
     private final TouchInjector touch;
     private DeviceManager devices;
@@ -100,6 +113,7 @@ final class Mapper {
         elements.clear();
         toggleKey = cfg.optInt("toggleKey", 41);
         hideKey = cfg.optInt("hideKey", -1);
+        layoutKey = cfg.optInt("layoutKey", -1);
         screenW = (float) cfg.optDouble("w", screenW);
         screenH = (float) cfg.optDouble("h", screenH);
         JSONArray arr = cfg.optJSONArray("elements");
@@ -123,6 +137,19 @@ final class Mapper {
                 e.autoSprint = o.optBoolean("autoSprint", false);
                 e.sprintKey = o.optInt("sprintKey", -1);
                 e.sprintR = (float) o.optDouble("sprintR", e.r * 2.5);
+                e.tapMode = o.optString("tapMode", "hold");
+                e.sensY = (float) o.optDouble("sensY", 1.0);
+                e.adsSens = (float) o.optDouble("adsSens", e.sens);
+                e.adsKey = o.optInt("adsKey", -1);
+                e.delay = o.optLong("delay", 120);
+                JSONArray st = o.optJSONArray("steps");
+                if (st != null) {
+                    e.steps = new float[st.length()][];
+                    for (int k = 0; k < st.length(); k++) {
+                        JSONArray pt = st.optJSONArray(k);
+                        e.steps[k] = new float[]{(float) pt.optDouble(0), (float) pt.optDouble(1)};
+                    }
+                }
                 if ("look".equals(e.type)) e.finger = FINGER_LOOK;
                 else e.finger = 100 + i; // taps, toggles and every joystick get their own finger
                 elements.add(e);
@@ -175,6 +202,10 @@ final class Mapper {
         if (value == 2) return; // auto-repeat
         boolean down = value == 1;
 
+        if (layoutKey > 0 && code == layoutKey) {
+            if (!down && control != null) control.sendEvent("nextLayout", true);
+            return;
+        }
         if (hideKey > 0 && code == hideKey) {
             if (!down && control != null) control.sendEvent("hideToggle", true);
             return;
@@ -215,8 +246,16 @@ final class Mapper {
             }
             for (Element e : elements) {
                 if ("tap".equals(e.type) && e.key == code) {
-                    if (down) touch.down(e.finger, e.x, e.y);
-                    else touch.up(e.finger);
+                    if ("press".equals(e.tapMode)) {
+                        // e.g. aim button that toggles in the game: on while the key is held
+                        quickTap(e.finger, e.x, e.y);
+                    } else if (down) {
+                        touch.down(e.finger, e.x, e.y);
+                    } else {
+                        touch.up(e.finger);
+                    }
+                } else if ("macro".equals(e.type) && e.key == code) {
+                    if (down) runMacro(e);
                 } else if ("toggle".equals(e.type) && e.key == code) {
                     // press once = finger stays down, press again = release
                     if (down) {
@@ -307,18 +346,48 @@ final class Mapper {
         touch.move(e.finger, tx, ty);
     }
 
-    private void wheel(int virtualKey) {
-        Element target = null;
-        synchronized (this) {
-            for (Element e : elements) {
-                if ("tap".equals(e.type) && e.key == virtualKey) target = e;
+    /** A short tap that does not block the input thread. */
+    private void quickTap(int finger, float x, float y) {
+        taps.execute(() -> {
+            synchronized (this) {
+                touch.down(finger, x, y);
             }
-            if (target == null) return;
-            touch.down(target.finger, target.x, target.y);
+            SystemClock.sleep(45);
+            synchronized (this) {
+                touch.up(finger);
+            }
+            SystemClock.sleep(15);
+        });
+    }
+
+    private void runMacro(Element e) {
+        for (float[] st : e.steps) {
+            final float x = st[0];
+            final float y = st[1];
+            quickTap(e.finger, x, y);
+            final long d = Math.max(0, e.delay - 60);
+            taps.execute(() -> SystemClock.sleep(d));
         }
-        SystemClock.sleep(40);
+    }
+
+    private void wheel(int virtualKey) {
         synchronized (this) {
-            touch.up(target.finger);
+            // hotbar element: the wheel steps through its slots (down = next, up = previous)
+            for (Element e : elements) {
+                if ("wheel".equals(e.type) && e.steps.length > 0) {
+                    int n = e.steps.length;
+                    int dir = virtualKey == WHEEL_DOWN ? 1 : -1;
+                    e.cycle = e.cycle < 0 ? (dir > 0 ? 0 : n - 1) : ((e.cycle + dir) % n + n) % n;
+                    quickTap(e.finger, e.steps[e.cycle][0], e.steps[e.cycle][1]);
+                    return;
+                }
+            }
+            for (Element e : elements) {
+                if ("tap".equals(e.type) && e.key == virtualKey) {
+                    quickTap(e.finger, e.x, e.y);
+                    return;
+                }
+            }
         }
     }
 
@@ -338,8 +407,11 @@ final class Mapper {
             lookY = look.y;
             touch.down(look.finger, lookX, lookY);
         }
-        float nx = lookX + dx * look.sens;
-        float ny = lookY + dy * look.sens;
+        boolean aiming = look.adsKey > 0 && pressed.contains(look.adsKey);
+        float sx = aiming ? look.adsSens : look.sens;
+        float sy = sx * look.sensY;
+        float nx = lookX + dx * sx;
+        float ny = lookY + dy * sy;
         boolean outOfRange = Math.abs(nx - look.x) > look.lim || Math.abs(ny - look.y) > look.lim
                 || nx < 2 || ny < 2 || nx > screenW - 2 || ny > screenH - 2;
         if (outOfRange) {
@@ -348,8 +420,8 @@ final class Mapper {
             lookX = look.x;
             lookY = look.y;
             touch.down(look.finger, lookX, lookY);
-            nx = lookX + dx * look.sens;
-            ny = lookY + dy * look.sens;
+            nx = lookX + dx * sx;
+            ny = lookY + dy * sy;
         }
         lookX = nx;
         lookY = ny;
