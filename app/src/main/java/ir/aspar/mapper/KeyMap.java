@@ -29,7 +29,7 @@ public final class KeyMap {
         public String note = "";
         public float scale = 1.0f;       // on-screen size of a key circle (1 = normal)
         public boolean autoSprint = true; // joystick: forward alone pushes the finger up to the sprint-lock point
-        public int sprintKey = 42;       // joystick: holding this key (Shift) also sprints
+        public int sprintKey = 15;       // joystick: holding this key (Tab) + forward also sprints
         public float sprintDist = 2.5f;  // joystick: sprint point distance, in joystick radiuses, straight up
         public boolean cursor = false;   // key: after pressing it, switch between game mode and free mouse
 
@@ -63,6 +63,7 @@ public final class KeyMap {
             o.put("scale", scale);
             o.put("autoSprint", autoSprint);
             o.put("sprintKey", sprintKey);
+            o.put("sprintKeyV2", true);
             o.put("sprintDist", sprintDist);
             o.put("cursor", cursor);
             return o;
@@ -83,7 +84,8 @@ public final class KeyMap {
             e.note = o.optString("note", "");
             e.scale = (float) o.optDouble("scale", 1.0);
             e.autoSprint = o.optBoolean("autoSprint", true);
-            e.sprintKey = o.optInt("sprintKey", 42);
+            // older layouts stored Shift (42) as the default sprint key; the default is now Tab (15)
+            e.sprintKey = o.optBoolean("sprintKeyV2", false) ? o.optInt("sprintKey", 15) : 15;
             e.sprintDist = (float) o.optDouble("sprintDist", 2.5);
             e.cursor = o.optBoolean("cursor", false);
             return e;

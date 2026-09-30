@@ -35,7 +35,7 @@ final class EditorOverlay {
         void onStopRequested();
     }
 
-    private enum Wait { NONE, KEY, TOGGLE, DIR_UP, DIR_LEFT, DIR_DOWN, DIR_RIGHT }
+    private enum Wait { NONE, KEY, TOGGLE, SPRINT, DIR_UP, DIR_LEFT, DIR_DOWN, DIR_RIGHT }
 
     private enum Panel { NONE, ADD, LAYERS, SETTINGS }
 
@@ -579,7 +579,8 @@ final class EditorOverlay {
                 popup.addView(r3);
             } else {
             }
-            popup.addView(small("Shift + " + KeyNames.name(e.up) + " (نگه‌داشتن) = دویدن سریع بدون قفل", 0xFFAAAAAA));
+            popup.addView(small(KeyNames.name(e.sprintKey) + " + " + KeyNames.name(e.up) + " (نگه‌داشتن) = دویدن سریع بدون قفل", 0xFFAAAAAA));
+            popup.addView(chip("کلید دویدن: " + KeyNames.name(e.sprintKey) + " (تغییر)", v -> startWait(Wait.SPRINT)));
         } else if (KeyMap.LOOK.equals(e.type)) {
             popup.addView(small(String.format(Locale.US, "حساسیت: %.1f", e.sens), 0xFFFFFFFF));
             LinearLayout r1 = new LinearLayout(ctx);
@@ -646,6 +647,9 @@ final class EditorOverlay {
             case TOGGLE:
                 showHint("کلید جدید برای تغییر حالت را بزن", 0);
                 break;
+            case SPRINT:
+                showHint("کلیدی را بزن که همراه جلو، دویدن سریع بدهد", 0);
+                break;
             case DIR_UP:
                 showHint("کلید «جلو» را بزن", 0);
                 break;
@@ -675,6 +679,11 @@ final class EditorOverlay {
                 wait = Wait.NONE;
                 showHint("کلید تغییر حالت: " + KeyNames.name(code), 2000);
                 return true;
+            case SPRINT:
+                if (e != null) e.sprintKey = code;
+                wait = Wait.NONE;
+                showHint("کلید دویدن: " + KeyNames.name(code), 2000);
+                break;
             case KEY:
                 if (code == keyMap.toggleKey) {
                     showHint("این کلید برای تغییر حالت است؛ یکی دیگر بزن", 2500);
