@@ -715,21 +715,33 @@ final class EditorOverlay {
             }
             if (e.cursor) {
                 LinearLayout mm = new LinearLayout(ctx);
+                boolean isLoot = !e.mapMode && !e.menuMode;
                 TextView loot = chip("📦 لوت‌باکس", v -> {
                     e.mapMode = false;
+                    e.menuMode = false;
                     buildPopup();
                 });
-                loot.setBackground(round(!e.mapMode ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
+                loot.setBackground(round(isLoot ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
                 TextView map = chip("🗺 نقشه", v -> {
                     e.mapMode = true;
+                    e.menuMode = false;
                     buildPopup();
                 });
                 map.setBackground(round(e.mapMode ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
+                TextView craft = chip("🛠 کرفت", v -> {
+                    e.mapMode = false;
+                    e.menuMode = true;
+                    buildPopup();
+                });
+                craft.setBackground(round(e.menuMode && !e.mapMode ? 0xFF2E7D32 : 0xFF3A3A3F, dp(14)));
                 mm.addView(loot);
                 mm.addView(map);
+                mm.addView(craft);
                 popup.addView(mm);
                 popup.addView(small(e.mapMode
                         ? "نقشه: چرخ موس = زوم، کلیک چپ = علامت‌گذاری، نگه‌داشتن و کشیدن = جابه‌جا کردن نقشه"
+                        : e.menuMode
+                        ? "کرفت: موس آزاد، فقط وقتی کلیک کنی لمس می‌شود، چرخ موس = بالا و پایین کردن منو"
                         : "لوت‌باکس: چرخ موس = اسکرول، Shift + کلیک چپ = انتقال سریع", 0xFFAAAAAA));
                 popup.addView(small("با زدن این کلید، دکمه بازی لمس می‌شود و موس آزاد می‌شود؛ دوباره بزنی موس قفل می‌شود (مثلاً برای لوت‌باکس)", 0xFFAAAAAA));
             }

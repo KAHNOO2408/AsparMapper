@@ -283,7 +283,8 @@ public class MapperService extends Service implements ServerClient.Listener {
 
     @Override
     public void onModeVia(String via) {
-        lootMode = "loot".equals(via) || "map".equals(via); // loot box or map: only the cursor is shown
+        // loot box, map or craft menu: only the cursor is shown
+        lootMode = "loot".equals(via) || "map".equals(via) || "menu".equals(via);
     }
 
     @Override

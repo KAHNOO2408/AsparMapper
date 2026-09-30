@@ -52,6 +52,7 @@ final class Mapper {
     private float slotSize = 70f;
     private final Set<Integer> held = new HashSet<>(); // every key currently held, in any mode
     private volatile boolean mapView;   // free mouse was opened by a map key: wheel zooms
+    private volatile boolean menuView;  // free mouse was opened by a menu key (craft): plain clicks only
 
     private static final class Element {
         String type;
@@ -76,6 +77,7 @@ final class Mapper {
         long lastUpRelease;
         String tapMode = "hold";
         boolean mapMode;        // cursor key for a map: wheel = pinch zoom
+        boolean menuMode;       // cursor key for a menu (craft): no quick transfer
         float sensY = 1f;       // look: vertical speed relative to horizontal
         float adsSens;          // look: sensitivity while adsKey is held (aiming)
         int adsKey = -1;
@@ -234,7 +236,8 @@ final class Mapper {
         if (code != BTN_LEFT && code != BTN_RIGHT) return false;
         synchronized (this) {
             if (down) {
-                if (code == BTN_LEFT && (held.contains(KEY_LEFTSHIFT) || held.contains(KEY_RIGHTSHIFT))) {
+                if (code == BTN_LEFT && !menuView && !mapView
+                        && (held.contains(KEY_LEFTSHIFT) || held.contains(KEY_RIGHTSHIFT))) {
                     if (!transferring) {
                         transferring = true;
                         Thread t = new Thread(this::transferLoop, "transfer");
@@ -348,6 +351,7 @@ final class Mapper {
                 e.sprintR = (float) o.optDouble("sprintR", e.r * 2.5);
                 e.tapMode = o.optString("tapMode", "hold");
                 e.mapMode = o.optBoolean("mapMode", false);
+                e.menuMode = o.optBoolean("menuMode", false);
                 e.sensY = (float) o.optDouble("sensY", 1.0);
                 e.adsSens = (float) o.optDouble("adsSens", e.sens);
                 e.adsKey = o.optInt("adsKey", -1);
@@ -382,7 +386,10 @@ final class Mapper {
             cursorPressed = false;
             transferring = false;
             gameMode = on;
-            if (on) mapView = false;
+            if (on) {
+                mapView = false;
+                menuView = false;
+            }
             // locked buttons (e.g. voice) stay pressed across mode changes
             Set<Integer> keep = new HashSet<>();
             for (Element e : elements) if ("toggle".equals(e.type)) keep.add(e.finger);
@@ -476,7 +483,8 @@ final class Mapper {
                 }
                 boolean toMouse = gameMode;
                 mapView = toMouse && cursorKey.mapMode;
-                setGameMode(!gameMode, mapView ? "map" : "loot");
+                menuView = toMouse && cursorKey.menuMode && !cursorKey.mapMode;
+                setGameMode(!gameMode, mapView ? "map" : menuView ? "menu" : "loot");
             }
             return;
         }

@@ -36,6 +36,7 @@ public final class KeyMap {
         public float sprintDist = 2.5f;  // joystick: sprint point distance, in joystick radiuses, straight up
         public boolean cursor = false;   // key: after pressing it, switch between game mode and free mouse
         public boolean mapMode = false;  // cursor key opens a map: mouse wheel zooms instead of scrolling
+        public boolean menuMode = false; // cursor key opens a menu (craft): plain mouse, wheel scrolls, no quick transfer
         public boolean pressRelease = false; // key: tap on press + tap on release (hold-to-aim with toggle buttons)
         public float sensY = 1.0f;       // look: vertical speed relative to horizontal
         public float adsSens = 0.5f;     // look: sensitivity while the aim key is held
@@ -86,6 +87,7 @@ public final class KeyMap {
             o.put("cursor", cursor);
             o.put("pressRelease", pressRelease);
             o.put("mapMode", mapMode);
+            o.put("menuMode", menuMode);
             o.put("sensY", sensY);
             o.put("adsSens", adsSens);
             o.put("adsKey", adsKey);
@@ -125,6 +127,7 @@ public final class KeyMap {
             e.cursor = o.optBoolean("cursor", false);
             e.pressRelease = o.optBoolean("pressRelease", false);
             e.mapMode = o.optBoolean("mapMode", false);
+            e.menuMode = o.optBoolean("menuMode", false);
             e.sensY = (float) o.optDouble("sensY", 1.0);
             e.adsSens = (float) o.optDouble("adsSens", e.sens * 0.5);
             e.adsKey = o.optInt("adsKey", KeyNames.BTN_RIGHT);
@@ -211,6 +214,7 @@ public final class KeyMap {
                 o.put("key", e.key);
                 o.put("cursor", e.cursor);
                 o.put("mapMode", e.mapMode);
+                o.put("menuMode", e.menuMode);
                 o.put("tapMode", e.pressRelease ? "press" : "hold");
             } else if (JOYSTICK.equals(e.type)) {
                 o.put("r", e.size * height);
