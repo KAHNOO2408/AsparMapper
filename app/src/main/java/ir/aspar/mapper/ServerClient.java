@@ -37,6 +37,7 @@ public final class ServerClient {
     private volatile boolean connected;
     private volatile boolean gameMode;
     private volatile JSONObject pendingConfig;
+    private volatile String lastError = "";
 
     public ServerClient(android.content.Context ctx, Listener listener) {
         this.ctx = ctx.getApplicationContext();
@@ -48,6 +49,11 @@ public final class ServerClient {
 
     public boolean isConnected() {
         return connected;
+    }
+
+    /** Why the last connection attempt failed (for the diagnostics text). */
+    public String lastError() {
+        return lastError;
     }
 
     public boolean isGameMode() {
@@ -124,6 +130,7 @@ public final class ServerClient {
                 os.flush();
                 JSONObject res = new JSONObject(in.readLine());
                 if (!res.optBoolean("ok")) {
+                    lastError = "server rejected token";
                     post(false, "سرویس قدیمی در حال اجراست؛ دوباره «فعال‌سازی» را بزن.");
                     sleep(3000);
                     continue;
@@ -132,6 +139,7 @@ public final class ServerClient {
                 gameMode = res.optBoolean("game");
                 out = os;
                 connected = true;
+                lastError = "";
                 post(true, version == EXPECTED_VERSION ? "وصل است" : "نسخه سرویس قدیمی است؛ دوباره فعال‌سازی کن");
                 main.post(() -> listener.onGameModeChanged(gameMode));
                 JSONObject cfg = pendingConfig;
@@ -148,6 +156,7 @@ public final class ServerClient {
                 }
             } catch (Exception e) {
                 // not running yet, or it went away
+                lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
             } finally {
                 out = null;
                 socket = null;

@@ -49,6 +49,7 @@ public class MainActivity extends Activity implements MapperService.StatusListen
         status = text("…", 15, 0xFFFFFFFF);
         status.setPadding(p, p, p, p);
         status.setBackground(round(0xFF263238));
+        status.setTextIsSelectable(true);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
         slp.topMargin = p;
         col.addView(status, slp);
@@ -85,6 +86,12 @@ public class MainActivity extends Activity implements MapperService.StatusListen
         c3.addView(btn("فعال‌سازی", v -> MapperService.send(this, MapperService.ACTION_ACTIVATE, parse(connectPort))));
         connectPort = portField("پورت اتصال (اختیاری – عدد بعد از : در «آدرس IP و درگاه»)");
         c3.addView(connectPort);
+        c3.addView(btn("عیب‌یابی (گزارش کامل)", v -> MapperService.send(this, MapperService.ACTION_DIAG, parse(connectPort))));
+        c3.addView(btn("کپی گزارش بالای صفحه", v -> {
+            android.content.ClipboardManager cm = getSystemService(android.content.ClipboardManager.class);
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("Aspar Mapper", status.getText()));
+            Toast.makeText(this, "کپی شد – برای Claude بفرست", Toast.LENGTH_SHORT).show();
+        }));
 
         // 4. play
         LinearLayout c4 = card(col, "۴. بازی");

@@ -37,6 +37,7 @@ public class MapperService extends Service implements ServerClient.Listener {
     public static final String ACTION_EDIT = "ir.aspar.mapper.EDIT";
     public static final String ACTION_TOGGLE = "ir.aspar.mapper.TOGGLE";
     public static final String ACTION_STOP = "ir.aspar.mapper.STOP";
+    public static final String ACTION_DIAG = "ir.aspar.mapper.DIAG";
     public static final String EXTRA_PORT = "port";
 
     private static final String CHANNEL = "mapper";
@@ -111,6 +112,9 @@ public class MapperService extends Service implements ServerClient.Listener {
             case ACTION_ACTIVATE:
                 activate(intent.getIntExtra(EXTRA_PORT, 0));
                 break;
+            case ACTION_DIAG:
+                diagnose(intent.getIntExtra(EXTRA_PORT, 0));
+                break;
             case ACTION_EDIT:
                 showOverlays();
                 openEditor();
@@ -175,6 +179,24 @@ public class MapperService extends Service implements ServerClient.Listener {
         }, "activate").start();
     }
 
+    private void diagnose(int port) {
+        report("در حال جمع‌آوری گزارش… (اشکال‌زدایی بی‌سیم باید روشن باشد)");
+        new Thread(() -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append("== app: connected=").append(client != null && client.isConnected())
+                    .append(" lastError=").append(client != null ? client.lastError() : "-")
+                    .append(" token=").append(Prefs.token(this).length())
+                    .append(" version=").append(ServerClient.EXPECTED_VERSION).append('\n');
+            sb.append("== apk: ").append(getApplicationInfo().sourceDir).append('\n');
+            try {
+                sb.append(Activator.diagnose(this, port));
+            } catch (Throwable t) {
+                sb.append("== adb error: ").append(t);
+            }
+            report(sb.toString());
+        }, "diagnose").start();
+    }
+
     private void report(String message) {
         lastMessage = message;
         main.post(() -> {
@@ -190,7 +212,7 @@ public class MapperService extends Service implements ServerClient.Listener {
         connected = c;
         if (c) pushConfig();
         updateBubble();
-        report(c ? "سرویس " + info : "سرویس در دسترس نیست – «فعال‌سازی» را بزن");
+        report(c ? "سرویس " + info : "سرویس در دسترس نیست – «فعال‌سازی» را بزن\n(" + client.lastError() + ")");
     }
 
     @Override
