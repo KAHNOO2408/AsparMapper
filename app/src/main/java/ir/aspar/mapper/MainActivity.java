@@ -80,6 +80,7 @@ public class MainActivity extends Activity implements MapperService.StatusListen
         title.setTypeface(Typeface.DEFAULT_BOLD);
         col.addView(title);
         col.addView(text("کنترل بازی با موس و کیبورد – مخصوص Oxide: Survival Island", 14, 0xFFB0BEC5));
+        col.addView(text("سازنده: بنیامین قاسمی  •  نام در Oxide: jack_80", 13, 0xFF81C784));
 
         status = text("…", 15, 0xFFFFFFFF);
         status.setPadding(p, p, p, p);
