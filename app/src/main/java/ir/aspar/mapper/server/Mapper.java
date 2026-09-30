@@ -59,6 +59,7 @@ final class Mapper {
 
     private volatile boolean gameMode;
     private int toggleKey = 41; // KEY_GRAVE ( ` )
+    private int hideKey = -1;   // tells the app to show/hide its floating button
     private float screenW = 2340;
     private float screenH = 1080;
 
@@ -98,6 +99,7 @@ final class Mapper {
         pressed.clear();
         elements.clear();
         toggleKey = cfg.optInt("toggleKey", 41);
+        hideKey = cfg.optInt("hideKey", -1);
         screenW = (float) cfg.optDouble("w", screenW);
         screenH = (float) cfg.optDouble("h", screenH);
         JSONArray arr = cfg.optJSONArray("elements");
@@ -173,6 +175,10 @@ final class Mapper {
         if (value == 2) return; // auto-repeat
         boolean down = value == 1;
 
+        if (hideKey > 0 && code == hideKey) {
+            if (!down && control != null) control.sendEvent("hideToggle", true);
+            return;
+        }
         if (code == toggleKey) {
             // switch on release, so the system always sees a complete press/release pair
             if (!down) setGameMode(!gameMode);

@@ -35,7 +35,7 @@ final class EditorOverlay {
         void onStopRequested();
     }
 
-    private enum Wait { NONE, KEY, TOGGLE, SPRINT, DIR_UP, DIR_LEFT, DIR_DOWN, DIR_RIGHT }
+    private enum Wait { NONE, KEY, TOGGLE, HIDE, SPRINT, DIR_UP, DIR_LEFT, DIR_DOWN, DIR_RIGHT }
 
     private enum Panel { NONE, ADD, LAYERS, SETTINGS }
 
@@ -410,6 +410,11 @@ final class EditorOverlay {
                     closePanel();
                     startWait(Wait.TOGGLE);
                 }));
+        col.addView(row("کلید مخفی/نمایش دکمه شناور: " + (keyMap.hideKey > 0 ? KeyNames.name(keyMap.hideKey) : "ندارد"),
+                "برای استریم: با این کلید دکمه شناور و برچسب‌ها کاملاً مخفی می‌شوند و دوباره ظاهر می‌شوند", v -> {
+                    closePanel();
+                    startWait(Wait.HIDE);
+                }));
         col.addView(row(Prefs.showLabels(ctx) ? "برچسب کلیدها در بازی: روشن" : "برچسب کلیدها در بازی: خاموش",
                 "نمایش کم‌رنگ دکمه‌ها روی صفحه بازی", v -> {
                     toggleLabels();
@@ -647,6 +652,9 @@ final class EditorOverlay {
             case TOGGLE:
                 showHint("کلید جدید برای تغییر حالت را بزن", 0);
                 break;
+            case HIDE:
+                showHint("کلید مخفی/نمایش دکمه شناور را بزن (مثلاً F12 یا Insert)", 0);
+                break;
             case SPRINT:
                 showHint("کلیدی را بزن که همراه جلو، دویدن سریع بدهد", 0);
                 break;
@@ -678,6 +686,15 @@ final class EditorOverlay {
                 keyMap.toggleKey = code;
                 wait = Wait.NONE;
                 showHint("کلید تغییر حالت: " + KeyNames.name(code), 2000);
+                return true;
+            case HIDE:
+                if (code == keyMap.toggleKey) {
+                    showHint("این کلید برای تغییر حالت است؛ یکی دیگر بزن", 2500);
+                    return true;
+                }
+                keyMap.hideKey = code;
+                wait = Wait.NONE;
+                showHint("کلید مخفی/نمایش دکمه: " + KeyNames.name(code), 2000);
                 return true;
             case SPRINT:
                 if (e != null) e.sprintKey = code;

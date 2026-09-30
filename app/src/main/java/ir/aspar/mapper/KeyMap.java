@@ -93,12 +93,14 @@ public final class KeyMap {
     }
 
     public int toggleKey = KeyNames.KEY_GRAVE;
+    public int hideKey = -1; // shows/hides the floating button (for streaming)
     public final List<Element> elements = new ArrayList<>();
 
     public String toJsonString() {
         try {
             JSONObject root = new JSONObject();
             root.put("toggleKey", toggleKey);
+            root.put("hideKey", hideKey);
             JSONArray arr = new JSONArray();
             for (Element e : elements) arr.put(e.toJson());
             root.put("elements", arr);
@@ -113,6 +115,7 @@ public final class KeyMap {
         try {
             JSONObject root = new JSONObject(s);
             km.toggleKey = root.optInt("toggleKey", KeyNames.KEY_GRAVE);
+            km.hideKey = root.optInt("hideKey", -1);
             JSONArray arr = root.optJSONArray("elements");
             if (arr != null) {
                 for (int i = 0; i < arr.length(); i++) km.elements.add(Element.fromJson(arr.getJSONObject(i)));
@@ -128,6 +131,7 @@ public final class KeyMap {
         JSONObject cfg = new JSONObject();
         cfg.put("cmd", "config");
         cfg.put("toggleKey", toggleKey);
+        cfg.put("hideKey", hideKey);
         cfg.put("w", width);
         cfg.put("h", height);
         JSONArray arr = new JSONArray();

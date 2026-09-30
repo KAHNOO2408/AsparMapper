@@ -44,6 +44,15 @@ public final class Prefs {
         get(ctx).edit().putBoolean("labels", on).apply();
     }
 
+    /** Stream mode: the floating button stays hidden inside the game. */
+    public static boolean bubbleHidden(Context ctx) {
+        return get(ctx).getBoolean("bubble_hidden", false);
+    }
+
+    public static void setBubbleHidden(Context ctx, boolean on) {
+        get(ctx).edit().putBoolean("bubble_hidden", on).apply();
+    }
+
     public static boolean paired(Context ctx) {
         return get(ctx).getBoolean("paired", false);
     }

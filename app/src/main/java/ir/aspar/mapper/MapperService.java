@@ -37,6 +37,7 @@ public class MapperService extends Service implements ServerClient.Listener {
     public static final String ACTION_STOP = "ir.aspar.mapper.STOP";
     public static final String ACTION_DIAG = "ir.aspar.mapper.DIAG";
     public static final String ACTION_SET_GAME = "ir.aspar.mapper.SET_GAME";
+    public static final String ACTION_HIDE_TOGGLE = "ir.aspar.mapper.HIDE_TOGGLE";
     public static final String EXTRA_PORT = "port";
     public static final String EXTRA_PKG = "pkg";
 
@@ -149,6 +150,9 @@ public class MapperService extends Service implements ServerClient.Listener {
                 showOverlays();
                 break;
             }
+            case ACTION_HIDE_TOGGLE:
+                onHideToggle();
+                break;
             case ACTION_EDIT:
                 showOverlays();
                 openEditor();
@@ -315,6 +319,14 @@ public class MapperService extends Service implements ServerClient.Listener {
     }
 
     @Override
+    public void onHideToggle() {
+        boolean hidden = !Prefs.bubbleHidden(this);
+        Prefs.setBubbleHidden(this, hidden);
+        refreshVisibility();
+        goForeground(); // update the notification button text
+    }
+
+    @Override
     public void onForeground(String pkg) {
         serverForeground = pkg;
         refreshVisibility();
@@ -324,8 +336,10 @@ public class MapperService extends Service implements ServerClient.Listener {
     private void refreshVisibility() {
         boolean in = inGame();
         boolean editing = editor != null && editor.isShowing();
-        if (bubbleRoot != null) bubbleRoot.setVisibility(in && !editing ? View.VISIBLE : View.GONE);
-        if (labels != null) labels.setVisibility(in && gameMode && !editing && Prefs.showLabels(this) ? View.VISIBLE : View.GONE);
+        boolean stream = Prefs.bubbleHidden(this);
+        // hidden while playing (game mode) and in stream mode, so viewers never see it
+        if (bubbleRoot != null) bubbleRoot.setVisibility(in && !editing && !gameMode && !stream ? View.VISIBLE : View.GONE);
+        if (labels != null) labels.setVisibility(in && gameMode && !editing && !stream && Prefs.showLabels(this) ? View.VISIBLE : View.GONE);
         if (!in && gameMode && client != null) client.setGameMode(false); // give the keyboard back outside the game
     }
 
@@ -508,7 +522,10 @@ public class MapperService extends Service implements ServerClient.Listener {
                 .setContentText("کلید ` بین حالت بازی و موس جابه‌جا می‌کند")
                 .setContentIntent(open)
                 .setOngoing(true)
-                .addAction(new Notification.Action.Builder(null, "حالت بازی", toggle).build())
+                .addAction(new Notification.Action.Builder(null,
+                        Prefs.bubbleHidden(this) ? "نمایش دکمه" : "مخفی کردن دکمه",
+                        PendingIntent.getService(this, 4, new Intent(this, MapperService.class).setAction(ACTION_HIDE_TOGGLE),
+                                PendingIntent.FLAG_IMMUTABLE)).build())
                 .addAction(new Notification.Action.Builder(null, "ویرایش", edit).build())
                 .addAction(new Notification.Action.Builder(null, "خاموش", stop).build())
                 .build();

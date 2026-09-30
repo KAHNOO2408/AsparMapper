@@ -39,6 +39,12 @@ public final class KeyNames {
         for (int i = 0; i < 10; i++) NAMES.put(59 + i, "F" + (i + 1));
         NAMES.put(87, "F11");
         NAMES.put(88, "F12");
+        NAMES.put(102, "Home");
+        NAMES.put(104, "PageUp");
+        NAMES.put(107, "End");
+        NAMES.put(109, "PageDown");
+        NAMES.put(110, "Insert");
+        NAMES.put(111, "Delete");
         NAMES.put(97, "RCtrl");
         NAMES.put(100, "RAlt");
         NAMES.put(103, "↑");

@@ -27,6 +27,8 @@ public final class ServerClient {
         void onDevices(java.util.List<String> devices);
 
         void onForeground(String pkg);
+
+        void onHideToggle();
     }
 
     public static final int EXPECTED_VERSION = 2;
@@ -168,6 +170,9 @@ public final class ServerClient {
                         java.util.List<String> list = new java.util.ArrayList<>();
                         for (int i = 0; i < devs.length(); i++) list.add(devs.optString(i));
                         main.post(() -> listener.onDevices(list));
+                    }
+                    if ("hideToggle".equals(msg.optString("event"))) {
+                        main.post(listener::onHideToggle);
                     }
                     if ("foreground".equals(msg.optString("event"))) {
                         String pkg = msg.optString("value");
