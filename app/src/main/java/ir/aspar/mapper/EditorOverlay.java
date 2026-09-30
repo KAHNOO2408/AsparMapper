@@ -91,6 +91,7 @@ final class EditorOverlay {
         root.setBackgroundColor(0x66000000);
 
         canvas = new EditCanvas(ctx, keyMap);
+        canvas.gears = true;
         root.addView(canvas, new FrameLayout.LayoutParams(-1, -1));
 
         // replica of the floating button: tap = save & exit
@@ -559,7 +560,7 @@ final class EditorOverlay {
         wait = Wait.NONE;
         hint.setVisibility(View.GONE);
         KeyMap.Element e = canvas.selected;
-        if (e != null) select(e);
+        if (e != null) select(e, true);
     }
 
     private void addLook() {
@@ -606,7 +607,12 @@ final class EditorOverlay {
 
     // ------------------------------------------------------------------ selection popup
 
+    /** Selects a button. Its settings card only opens from the gear (openCard). */
     private void select(KeyMap.Element e) {
+        select(e, false);
+    }
+
+    private void select(KeyMap.Element e, boolean openCard) {
         canvas.selected = e;
         wait = Wait.NONE;
         canvas.invalidate();
@@ -614,9 +620,16 @@ final class EditorOverlay {
             hidePopup();
             return;
         }
-        if (KeyMap.TAP.equals(e.type) || KeyMap.TOGGLE.equals(e.type) || KeyMap.MACRO.equals(e.type)
-                || KeyMap.SWIPE.equals(e.type)) wait = Wait.KEY;
-        buildPopup();
+        boolean keyed = KeyMap.TAP.equals(e.type) || KeyMap.TOGGLE.equals(e.type) || KeyMap.MACRO.equals(e.type)
+                || KeyMap.SWIPE.equals(e.type);
+        if (keyed) wait = Wait.KEY;
+        if (openCard) {
+            buildPopup();
+        } else {
+            popup.setVisibility(View.GONE);
+            showHint(keyed ? "کلید فعلی: " + KeyNames.name(e.key) + " • برای تغییر یک کلید بزن • تنظیمات: ⚙"
+                    : typeName(e) + " • تنظیمات: ⚙", 2500);
+        }
     }
 
     private void hidePopup() {
@@ -852,7 +865,7 @@ final class EditorOverlay {
         if (e == null) return;
         e.key = code;
         canvas.invalidate();
-        buildPopup();
+        if (popup.getVisibility() == View.VISIBLE) buildPopup();
         showHint("کلید «" + KeyNames.name(code) + "» ثبت شد", 1500);
     }
 
@@ -1134,6 +1147,7 @@ final class EditorOverlay {
         private KeyMap.Element dragging;
         private KeyMap.Element draggingSprint;
         private KeyMap.Element draggingEnd;
+        private KeyMap.Element gearTapped;
         private float downX, downY, grabDx, grabDy;
         private boolean moved;
 
@@ -1154,6 +1168,11 @@ final class EditorOverlay {
             }
             switch (ev.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
+                    KeyMap.Element g = hitGear(ev.getX(), ev.getY());
+                    if (g != null) {
+                        gearTapped = g;
+                        return true;
+                    }
                     draggingEnd = hitEnd(ev.getX(), ev.getY());
                     if (draggingEnd != null) {
                         popup.setVisibility(View.GONE);
@@ -1199,6 +1218,13 @@ final class EditorOverlay {
                     }
                     return true;
                 case MotionEvent.ACTION_UP:
+                    if (gearTapped != null) {
+                        KeyMap.Element t = gearTapped;
+                        gearTapped = null;
+                        if (canvas.selected == t && popup.getVisibility() == View.VISIBLE) select(t, false);
+                        else select(t, true);
+                        return true;
+                    }
                     if (draggingEnd != null) {
                         select(draggingEnd);
                         draggingEnd = null;
@@ -1210,7 +1236,7 @@ final class EditorOverlay {
                         return true;
                     }
                     if (dragging != null) {
-                        select(dragging); // after a drag or a tap: show its settings next to it
+                        select(dragging); // select only; the gear opens the settings card
                     } else if (!moved) {
                         select(null);
                         closePanel();
@@ -1220,6 +1246,15 @@ final class EditorOverlay {
                 default:
                     return true;
             }
+        }
+
+        private KeyMap.Element hitGear(float x, float y) {
+            for (int i = keyMap.elements.size() - 1; i >= 0; i--) {
+                KeyMap.Element e = keyMap.elements.get(i);
+                float[] p = gearPos(e);
+                if (Math.hypot(p[0] - x, p[1] - y) < dp(16)) return e;
+            }
+            return null;
         }
 
         private KeyMap.Element hitEnd(float x, float y) {

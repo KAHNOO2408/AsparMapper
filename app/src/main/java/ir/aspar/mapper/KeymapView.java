@@ -63,6 +63,19 @@ class KeymapView extends View {
         return (vy + loc[1]) / screen().y;
     }
 
+    /** Editor only: draw a small gear on each button that opens its settings. */
+    boolean gears;
+
+    /** Centre of the gear badge of an element, in view coordinates. */
+    float[] gearPos(KeyMap.Element e) {
+        Point s = screen();
+        getLocationOnScreen(loc);
+        float x = e.fx * s.x - loc[0];
+        float y = e.fy * s.y - loc[1];
+        float r = radiusOf(e);
+        return new float[]{x + r * 0.72f, y - r * 0.72f};
+    }
+
     /** Radius of the round key marker, scaled per element. */
     float radiusOf(KeyMap.Element e) {
         if (KeyMap.TAP.equals(e.type) || KeyMap.TOGGLE.equals(e.type)) return keyRadius * e.scale;
@@ -125,6 +138,18 @@ class KeymapView extends View {
                     text.setColor(0xFFFFFFFF);
                     canvas.drawText(String.valueOf(k + 1), px, py + Ui.dp(getContext(), 4), text);
                 }
+            }
+            if (gears) {
+                float gx = x + kr * 0.72f;
+                float gy = y - kr * 0.72f;
+                float gr = Ui.dp(getContext(), 10);
+                fill.setColor(sel ? 0xFFFFC107 : 0xFF2A2A30);
+                canvas.drawCircle(gx, gy, gr, fill);
+                stroke.setColor(0xFFFFFFFF);
+                canvas.drawCircle(gx, gy, gr, stroke);
+                text.setTextSize(Ui.dp(getContext(), 12));
+                text.setColor(sel ? 0xFF000000 : 0xFFFFFFFF);
+                canvas.drawText("⚙", gx, gy + Ui.dp(getContext(), 4.5f), text);
             }
             String label = e.label();
             float size = (label.length() > 4 ? Ui.dp(getContext(), 9) : Ui.dp(getContext(), 12)) * Math.max(0.7f, Math.min(1.8f, e.scale));
