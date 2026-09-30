@@ -164,6 +164,7 @@ public class MapperService extends Service implements ServerClient.Listener {
             try {
                 if (client != null) client.quitServer();
                 String r = Activator.launchServer(this, port);
+                Prefs.get(this).edit().putString("last_activation", "OK: " + r).apply();
                 report("سرویس اجرا شد ✓ " + r);
                 main.post(this::showOverlays);
             } catch (Throwable t) {
@@ -172,6 +173,7 @@ public class MapperService extends Service implements ServerClient.Listener {
                     msg = "اول باید «جفت‌سازی» را انجام بدی.";
                     Prefs.setPaired(this, false);
                 }
+                Prefs.get(this).edit().putString("last_activation", "FAILED: " + msg).apply();
                 report("فعال‌سازی ناموفق: " + msg);
             } finally {
                 activating = false;
@@ -188,6 +190,7 @@ public class MapperService extends Service implements ServerClient.Listener {
                     .append(" token=").append(Prefs.token(this).length())
                     .append(" version=").append(ServerClient.EXPECTED_VERSION).append('\n');
             sb.append("== apk: ").append(getApplicationInfo().sourceDir).append('\n');
+            sb.append("== last activation: ").append(Prefs.get(this).getString("last_activation", "never")).append('\n');
             try {
                 sb.append(Activator.diagnose(this, port));
             } catch (Throwable t) {

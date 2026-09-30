@@ -69,12 +69,24 @@ final class DeviceManager {
         return out;
     }
 
+    private String lastListing = null;
+    private long lastScan = 0;
+
     private synchronized void scan() throws IOException {
+        // getevent is relatively expensive, so only rescan when /dev/input changes
+        String[] names = new java.io.File("/dev/input").list();
+        String listing = names == null ? "?" : String.join(",", new java.util.TreeSet<>(java.util.Arrays.asList(names)));
+        long now = System.currentTimeMillis();
+        if (listing.equals(lastListing) && (!"?".equals(listing) || now - lastScan < 10_000)) return;
+        lastListing = listing;
+        lastScan = now;
+
         List<Info> found = parseDevices();
         Map<String, Info> wanted = new HashMap<>();
         for (Info info : found) {
             if (info.isMouse || info.isKeyboard) wanted.put(info.path, info);
         }
+        Log.i("scan: " + found.size() + " input devices, " + wanted.size() + " mouse/keyboard");
         // remove readers of devices that disappeared
         List<String> gone = new ArrayList<>();
         for (String path : readers.keySet()) if (!wanted.containsKey(path)) gone.add(path);
@@ -104,7 +116,60 @@ final class DeviceManager {
         boolean isKeyboard;
     }
 
-    private static List<Info> parseDevices() throws IOException {
+    private static List<Info> parseDevices() {
+        try {
+            return parseProc();
+        } catch (IOException e) {
+            // Android 15/16: /proc/bus/input/devices is not readable by the shell any more
+            return parseGetevent();
+        }
+    }
+
+    private static List<Info> parseGetevent() {
+        List<Info> list = new ArrayList<>();
+        StringBuilder out = new StringBuilder();
+        Process p = null;
+        try {
+            p = new ProcessBuilder("getevent", "-pl").redirectErrorStream(true).start();
+            final java.io.InputStream in = p.getInputStream();
+            Thread t = new Thread(() -> {
+                try (BufferedReader br = new BufferedReader(new java.io.InputStreamReader(in))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        synchronized (out) {
+                            out.append(line).append('\n');
+                        }
+                    }
+                } catch (IOException ignored) {
+                }
+            }, "getevent-read");
+            t.setDaemon(true);
+            t.start();
+            // getevent -p prints the device list, then keeps waiting for events: stop it
+            t.join(1500);
+        } catch (Exception e) {
+            Log.e("getevent", e);
+        } finally {
+            if (p != null) p.destroy();
+        }
+        String text;
+        synchronized (out) {
+            text = out.toString();
+        }
+        for (GeteventParser.Device d : GeteventParser.parse(text)) {
+            if (d.isPhoneInternal()) continue;
+            Info info = new Info();
+            info.name = d.name;
+            info.path = d.path;
+            info.isMouse = d.isMouse();
+            info.isKeyboard = d.isKeyboard();
+            list.add(info);
+        }
+        if (list.isEmpty()) Log.w("getevent found no devices; output was:\n" + text);
+        return list;
+    }
+
+    private static List<Info> parseProc() throws IOException {
         List<Info> list = new ArrayList<>();
         String name = "";
         String handlers = "";

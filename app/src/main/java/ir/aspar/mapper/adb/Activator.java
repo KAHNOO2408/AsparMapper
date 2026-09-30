@@ -54,8 +54,12 @@ public final class Activator {
     }
 
     public static final String LOG = "/data/local/tmp/aspar_mapper.log";
-    /** "serve[r]" keeps pkill/pgrep from matching the shell command line that contains the pattern. */
-    private static final String PATTERN = "'ir.aspar.mapper.serve[r].Server'";
+    /**
+     * pgrep pattern for the helper. The launching shell command must never contain the literal
+     * class name, otherwise pgrep/kill would find (and kill) that shell itself. So the class name
+     * is assembled from a variable ($C.Server) and the pattern uses [.] instead of dots.
+     */
+    private static final String PATTERN = "'mapper[.]server[.]Server'";
 
     private static AdbManager connect(Context ctx, int manualPort) throws Exception {
         AdbManager adb = AdbManager.get(ctx);
@@ -120,9 +124,10 @@ public final class Activator {
         try {
             String token = Prefs.newToken(ctx);
             String apk = ctx.getApplicationInfo().sourceDir;
-            String cmd = "pkill -f " + PATTERN + "; sleep 0.3; "
+            String cmd = "OLD=$(pgrep -f " + PATTERN + "); [ -n \"$OLD\" ] && kill $OLD; sleep 0.3; "
+                    + "C=ir.aspar.mapper.server; "
                     + "if command -v setsid >/dev/null 2>&1; then S=setsid; else S=nohup; fi; "
-                    + "CLASSPATH=" + apk + " $S app_process /system/bin ir.aspar.mapper.server.Server "
+                    + "CLASSPATH=" + apk + " $S app_process /system/bin $C.Server "
                     + SERVER_PORT + " " + token + " > " + LOG + " 2>&1 < /dev/null & "
                     + "sleep 2; P=$(pgrep -f " + PATTERN + "); "
                     + "if [ -n \"$P\" ]; then echo \"OK pid=$P\"; else echo FAILED; fi; "
@@ -145,7 +150,9 @@ public final class Activator {
                     + "echo \"== setsid: $(command -v setsid) nohup: $(command -v nohup)\"; "
                     + "echo \"== process:\"; pgrep -fl " + PATTERN + " || echo 'not running'; "
                     + "echo \"== port " + SERVER_PORT + " (BAC2) listening:\"; grep -i ':BAC2 ' /proc/net/tcp /proc/net/tcp6 || echo 'no'; "
-                    + "echo \"== input devices:\"; grep -E '^(N|H):' /proc/bus/input/devices | tail -n 24; "
+                    + "echo \"== id: $(id)\"; "
+                    + "echo \"== /dev/input:\"; ls /dev/input 2>&1 | tr '\\n' ' '; echo; "
+                    + "echo \"== devices (getevent):\"; timeout 2 getevent -pl 2>&1 | grep -E 'add device|name:' | head -n 40; "
                     + "echo \"== log:\"; tail -n 40 " + LOG + " 2>&1";
             return runShell(adb, cmd, 12_000);
         } finally {
